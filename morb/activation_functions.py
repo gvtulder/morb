@@ -6,20 +6,24 @@ import theano.tensor as T
 sigmoid = T.nnet.sigmoid
 
 def softmax(x):
-    # expected input dimensions:
-    # 0 = minibatches
-    # 1 = units
-    # 2 = states 
-    
-    r = x.reshape((x.shape[0]*x.shape[1], x.shape[2]))
-    # r 0 = minibatches * units
-    # r 1 = states
-    
-    # this is the expected input for theano.nnet.softmax
-    s = T.nnet.softmax(r)
-    
-    # reshape back to original shape
-    return s.reshape(x.shape)
+    if x.ndim == 2:
+        return T.nnet.softmax(x)
+
+    else:
+        # expected input dimensions:
+        # 0 = minibatches
+        # 1 = units
+        # 2 = states 
+        
+        r = x.reshape((x.shape[0]*x.shape[1], x.shape[2]))
+        # r 0 = minibatches * units
+        # r 1 = states
+        
+        # this is the expected input for theano.nnet.softmax
+        s = T.nnet.softmax(r)
+        
+        # reshape back to original shape
+        return s.reshape(x.shape)
 
 def softmax_with_zero(x):
     # expected input dimensions:
