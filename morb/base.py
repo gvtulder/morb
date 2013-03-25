@@ -19,8 +19,8 @@ class Units(object):
         self.proxy_units = [] # list of units that are proxies of this Units instance
         self.rbm.add_units(self)
         
-    def activation(self, vmap):
-        terms = [param.activation_term_for(self, vmap) for param in self.rbm.params_affecting(self)]
+    def activation(self, vmap, skip_units=[]):
+        terms = [param.activation_term_for(self, vmap) for param in self.rbm.params_affecting(self) if not param.affects_any(skip_units)]
         # the linear activation is the sum of the activations for each of the parameters.
         return sum(terms, T.constant(0, theano.config.floatX))
         
@@ -119,6 +119,15 @@ class Parameters(object):
         
     def affects(self, units):
         return (units in self.units_list)
+        
+    def affects_any(self, units_list):
+        for units in units_list:
+            if units in self.units_list:
+                return True
+        return False
+
+    def affects_only(self, units):
+        return self.units_list == [units]
         
     def __repr__(self):
         units_names = ", ".join(("'%s'" % u.name) for u in self.units_list)

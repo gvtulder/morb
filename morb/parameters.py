@@ -36,6 +36,15 @@ class ProdParameters(Parameters):
         
         self.energy_gradients[self.var] = lambda vmap: vmap[self.vu].dimshuffle(0, 1, 'x') * vmap[self.hu].dimshuffle(0, 'x', 1)
         self.energy_gradient_sums[self.var] = lambda vmap: T.dot(vmap[self.vu].T, vmap[self.hu])
+
+    def weights_for(self, units):
+        assert units in [self.vu, self.hu]
+        if self.vu == units:
+            # (minibatches, hiddens, visible)
+            return self.var.dimshuffle('x', 1, 0)
+        else:
+            # (minibatches, visible, hiddens)
+            return self.var.dimshuffle('x', 0, 1)
                 
     def energy_term(self, vmap):
         return - T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=1)
@@ -174,6 +183,16 @@ class SharedProdParameters(Parameters):
     def _shared_axes(self, vmap):
         d = vmap[self.hu].ndim
         return range(d - self.hsd, d)
+
+    def weights_for(self, units):
+        assert units in [self.vu, self.hu]
+        if self.vu == units:
+            # (minibatches, maps, map dims, visible)
+            return self.var.dimshuffle('x', 1, 'x', 'x', 0)
+        else:
+            # (minibatches, hidden, visible)
+            raise Exception("SharedProdWeights.weights_for(hidden) not implemented")
+            return self.var.dimshuffle('x', 0, 'x', 'x', 1)
                 
     def energy_term(self, vmap):
         return - T.sum(T.dot(vmap[self.vu], self.var) * T.mean(vmap[self.hu], axis=self._shared_axes(vmap)), axis=1)
