@@ -134,6 +134,9 @@ class SoftmaxUnits(Units):
     def sample_from_activation(self, vmap):
         p = self.probabilities_from_activation(vmap)
         return samplers.multinomial(p)
+        
+    def mean_field_from_activation(self, vmap):
+        return self.probabilities_from_activation(vmap)
 
 
 class SoftmaxWithZeroUnits(Units):
