@@ -146,6 +146,45 @@ class SharedBiasParameters(Parameters):
         return - T.sum(t, axis=axes)
 
                
+class SharedProdParameters(Parameters):
+    def __init__(self, rbm, units_list, dimensions, shared_dimensions, W, name=None):
+        super(SharedProdParameters, self).__init__(rbm, units_list, name=name)
+        assert len(units_list) == 2
+        self.var = W
+        self.variables = [self.var]
+        self.vu = units_list[0]
+        self.hu = units_list[1]
+
+        self.hud = dimensions
+        self.hsd = shared_dimensions
+        self.hnd = self.hud - self.hsd
+
+        def from_hu(m, vmap):
+          return T.mean(m, axis=self._shared_axes(vmap))
+
+        def to_hu(m):
+          return T.shape_padright(m, self.hsd)
+        
+        self.terms[self.vu] = lambda vmap: T.dot(from_hu(vmap[self.hu], vmap), W.T)
+        self.terms[self.hu] = lambda vmap: to_hu(T.dot(vmap[self.vu], W))
+        
+        self.energy_gradients[self.var] = lambda vmap: vmap[self.vu].dimshuffle(0, 1, 'x') * from_hu(vmap[self.hu], vmap).dimshuffle(0, 'x', 1)
+        # self.energy_gradient_sums[self.var] = lambda vmap: T.dot(vmap[self.vu].T, from_hu(vmap[self.hu], vmap))
+        
+    def _shared_axes(self, vmap):
+        d = vmap[self.hu].ndim
+        return range(d - self.hsd, d)
+                
+    def energy_term(self, vmap):
+        return - T.sum(T.dot(vmap[self.vu], self.var) * T.mean(vmap[self.hu], axis=self._shared_axes(vmap)), axis=1)
+
+        t = tensordot(vmap[self.hu], self.var, axes=(range(1, self.hnd+1), range(0, self.hnd)))
+        axes = range(t.ndim - self.hsd, t.ndim)
+        import pdb; pdb.set_trace()
+        return - T.sum(t, axis=axes)
+        # return - T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=1)
+        
+    
 class Convolutional2DParameters(Parameters):
     def __init__(self, rbm, units_list, W, shape_info=None, name=None):
         # use the shape_info parameter to provide a dict with keys:
