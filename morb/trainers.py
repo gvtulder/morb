@@ -5,6 +5,8 @@ import theano.tensor as T
 
 import numpy as np
 
+from collections import OrderedDict
+
 class MinibatchTrainer(Trainer):
     # use self.rbm, self.umap, self.get_updates(vmap)
     def compile_function(self, initial_vmap, monitors=[], name='func', mb_size=32, train=True, mode=None):
@@ -15,7 +17,7 @@ class MinibatchTrainer(Trainer):
         updates = self.get_theano_updates(train) 
         
         # initialise data sets
-        data_sets = {}
+        data_sets = OrderedDict()
         for u, v in initial_vmap.items():
             shape = (1,) * v.ndim
             data_sets[u] = theano.shared(value = np.zeros(shape, dtype=theano.config.floatX),

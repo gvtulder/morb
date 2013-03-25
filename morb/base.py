@@ -1,6 +1,8 @@
 import theano
 import theano.tensor as T
 
+from collections import OrderedDict
+
 def _unique(l): # no idea why this function isn't available - the set() trick only works for hashable types!
     u = []
     for e in l:
@@ -132,7 +134,7 @@ class Updater(object):
         # variable is a single parameter variable, not a Parameters object or a list of variables.
         self.variable = variable
         self.stats_list = stats_list
-        self.theano_updates = {} # some Updaters have state. Most don't, so then this is just
+        self.theano_updates = OrderedDict() # some Updaters have state. Most don't, so then this is just
         # an empty dictionary. Those who do have state (like the MomentumUpdater) override
         # this variable.
                 
@@ -205,7 +207,7 @@ class ScaleUpdater(Updater):
         return self.scaling_factor * self.pu.get_update()
         
     def get_theano_updates(self):
-        u = {} # a scale updater has no state, so it has no theano updates of its own.
+        u = OrderedDict() # a scale updater has no state, so it has no theano updates of its own.
         u.update(self.pu.get_theano_updates())
         return u
         
@@ -227,7 +229,7 @@ class SumUpdater(Updater):
         return sum((pu.get_update() for pu in self.updaters), T.constant(0, theano.config.floatX))
         
     def get_theano_updates(self):
-        u = {} # a sum updater has no state, so it has no theano updates of its own.
+        u = OrderedDict() # a sum updater has no state, so it has no theano updates of its own.
         for pu in self.updaters:
             u.update(pu.get_theano_updates())
         return u
@@ -246,14 +248,14 @@ class Trainer(object):
         self.umap = umap
 
     def get_theano_updates(self, train=True):
-        theano_updates = {}
+        theano_updates = OrderedDict()
         # collect stats
         stats_list = _unique([s for pu in self.umap.values() for s in pu.stats_list]) # cannot use set() here because dicts are not hashable.
         for s in stats_list:
             theano_updates.update(s.get_theano_updates())
         
         if train:
-            variable_updates = {}
+            variable_updates = OrderedDict()
             for v, pu in self.umap.items():
                 theano_updates.update(pu.get_theano_updates()) # Updater state updates
                 theano_updates[v] = pu.get_update() # variable update
