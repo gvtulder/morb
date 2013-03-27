@@ -1,9 +1,12 @@
+from collections import OrderedDict
+
 import theano
 from theano import tensor as T
+import numpy as np
 
 from morb import parameters
 
-def label_prediction(rbm, vmap, visible_units, label_units, hidden_units):
+def label_prediction(rbm, vmap, visible_units, label_units, hidden_units, name='func', mb_size=32, mode=None):
     """ Calculate p(y|v), the probability of the labels given the visible state.
 
     $
@@ -40,7 +43,7 @@ def label_prediction(rbm, vmap, visible_units, label_units, hidden_units):
     """
     # TODO, some time, context
     
-    probability_map = {}
+    probability_map = []
 
     # Larochelle, 2012
     for y in label_units:
@@ -79,7 +82,45 @@ def label_prediction(rbm, vmap, visible_units, label_units, hidden_units):
         label_activation = label_activation / T.sum(label_activation, axis=1, keepdims=True)
         
         # (minibatches, labels)
-        probability_map = { y: theano.function([vmap[u] for u in visible_units], label_activation) }
+        probability_map.append(label_activation)
 
-    return probability_map
+
+
+    # initialise data sets
+    data_sets = OrderedDict()
+    for u in visible_units:
+        shape = (1,) * vmap[u].ndim
+        data_sets[u] = theano.shared(value = np.zeros(shape, dtype=theano.config.floatX),
+                                      name="dataset for '%s'"  % u.name)
+
+    index = T.lscalar() # index to a minibatch
+    
+    # construct givens for the compiled theano function - mapping variables to data
+    givens = dict((vmap[u], data_sets[u][index*mb_size:(index+1)*mb_size]) for u in visible_units)
+
+    TF = theano.function([index], probability_map, givens = givens, name = name, mode = mode)
+
+#   theano.printing.debugprint(hidden_units[0].activation(vmap))
+#   vmap[hidden_units[0]] = hidden_units[0].activation(vmap)
+#   theano.printing.debugprint(label_units[0].activation(vmap))
+#   theano.printing.debugprint(TF)
+
+    def func(dmap):
+        # dmap is a dict that maps unit types on their respective datasets (numeric).
+        units_list = dmap.keys()
+        data_sizes = [int(np.ceil(dmap[u].shape[0] / float(mb_size))) for u in units_list]
+        
+        if data_sizes.count(data_sizes[0]) != len(data_sizes): # check if all data sizes are equal
+            raise RuntimeError("The sizes of the supplied datasets for the different input units are not equal.")
+
+        data_cast = [dmap[u].astype(theano.config.floatX) for u in units_list]
+        
+        for i, u in enumerate(units_list):
+            data_sets[u].set_value(data_cast[i], borrow=True)
+            
+        for batch_index in xrange(min(data_sizes)):
+            yield TF(batch_index)
+            
+    return func
+
 
