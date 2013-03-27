@@ -79,13 +79,14 @@ class ProxyUnits(Units):
         
         
 class Parameters(object):
-    def __init__(self, rbm, units_list, name=None):
+    def __init__(self, rbm, units_list, name=None, energy_multiplier=1):
         self.rbm = rbm
         self.units_list = units_list
         self.terms = {} # terms is a dict of FUNCTIONS that take a vmap.
         self.energy_gradients = {} # a dict of FUNCTIONS that take a vmap.
         self.energy_gradient_sums = {} # a dict of FUNCTIONS that take a vmap.
         self.name = name
+        self.energy_multiplier = energy_multiplier
         self.rbm.add_parameters(self)
         
     def activation_term_for(self, units, vmap):
@@ -95,7 +96,7 @@ class Parameters(object):
         """
         Returns the energy gradient for each example in the batch.
         """
-        return self.energy_gradients[variable](vmap)
+        return self.energy_multiplier * self.energy_gradients[variable](vmap)
         
     def energy_gradient_sum_for(self, variable, vmap):
         """
@@ -110,7 +111,7 @@ class Parameters(object):
         efficiently with a dot product.
         """
         if variable in self.energy_gradient_sums:
-            return self.energy_gradient_sums[variable](vmap)
+            return self.energy_multiplier * self.energy_gradient_sums[variable](vmap)
         else:
             return T.sum(self.energy_gradients[variable](vmap), axis=0)
         

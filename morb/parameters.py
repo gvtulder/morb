@@ -9,8 +9,8 @@ tensordot = T.tensordot # use theano implementation
 
 class FixedBiasParameters(Parameters):
     # Bias fixed at -1, which is useful for some energy functions (like Gaussian with fixed variance, Beta)
-    def __init__(self, rbm, units, name=None):
-        super(FixedBiasParameters, self).__init__(rbm, [units], name=name)
+    def __init__(self, rbm, units, name=None, energy_multiplier=1):
+        super(FixedBiasParameters, self).__init__(rbm, [units], name=name, energy_multiplier = energy_multiplier)
         self.variables = []
         self.u = units
         
@@ -18,13 +18,13 @@ class FixedBiasParameters(Parameters):
         
     def energy_term(self, vmap):
         s = vmap[self.u]
-        return T.sum(s, axis=range(1, s.ndim)) # NO minus sign! bias is -1 so this is canceled.
+        return self.energy_multiplier * T.sum(s, axis=range(1, s.ndim)) # NO minus sign! bias is -1 so this is canceled.
         # sum over all but the minibatch dimension.
         
         
 class ProdParameters(Parameters):
-    def __init__(self, rbm, units_list, W, name=None):
-        super(ProdParameters, self).__init__(rbm, units_list, name=name)
+    def __init__(self, rbm, units_list, W, name=None, energy_multiplier=1):
+        super(ProdParameters, self).__init__(rbm, units_list, name=name, energy_multiplier = energy_multiplier)
         assert len(units_list) == 2
         self.var = W
         self.variables = [self.var]
@@ -47,14 +47,14 @@ class ProdParameters(Parameters):
             return self.var.dimshuffle('x', 0, 1)
                 
     def energy_term(self, vmap):
-        return - T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=1)
+        return - self.energy_multiplier * T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=1)
         # return - T.sum(T.dot(vmap[self.vu], self.var) * vmap[self.hu])
         # T.sum sums over the hiddens dimension.
         
     
 class BiasParameters(Parameters):
-    def __init__(self, rbm, units, b, name=None):
-        super(BiasParameters, self).__init__(rbm, [units], name=name)
+    def __init__(self, rbm, units, b, name=None, energy_multiplier=1):
+        super(BiasParameters, self).__init__(rbm, [units], name=name, energy_multiplier = energy_multiplier)
         self.var = b
         self.variables = [self.var]
         self.u = units
@@ -64,13 +64,13 @@ class BiasParameters(Parameters):
         self.energy_gradients[self.var] = lambda vmap: vmap[self.u]
         
     def energy_term(self, vmap):
-        return - T.dot(vmap[self.u], self.var)
+        return - self.energy_multiplier * T.dot(vmap[self.u], self.var)
         # bias is NOT TRANSPOSED because it's a vector, and apparently vectors are COLUMN vectors by default.
 
 
 class AdvancedProdParameters(Parameters):
-    def __init__(self, rbm, units_list, dimensions_list, W, name=None):
-        super(AdvancedProdParameters, self).__init__(rbm, units_list, name=name)
+    def __init__(self, rbm, units_list, dimensions_list, W, name=None, energy_multiplier=1):
+        super(AdvancedProdParameters, self).__init__(rbm, units_list, name=name, energy_multiplier = energy_multiplier)
         assert len(units_list) == 2
         self.var = W
         self.variables = [self.var]
@@ -103,12 +103,12 @@ class AdvancedProdParameters(Parameters):
         v_part = self.terms[self.hu](vmap)
         neg_energy = tensordot(v_part, vmap[self.hu], axes=(range(1, self.hd+1), range(1, self.hd+1)))
         # we do not sum over the first dimension, which is reserved for minibatches!
-        return - neg_energy # don't forget to flip the sign!
+        return - self.energy_multiplier * neg_energy # don't forget to flip the sign!
 
 
 class AdvancedBiasParameters(Parameters):
-    def __init__(self, rbm, units, dimensions, b, name=None):
-        super(AdvancedBiasParameters, self).__init__(rbm, [units], name=name)
+    def __init__(self, rbm, units, dimensions, b, name=None, energy_multiplier=1):
+        super(AdvancedBiasParameters, self).__init__(rbm, [units], name=name, energy_multiplier = energy_multiplier)
         self.var = b
         self.variables = [self.var]
         self.u = units
@@ -119,15 +119,15 @@ class AdvancedBiasParameters(Parameters):
         self.energy_gradients[self.var] = lambda vmap: vmap[self.u]
         
     def energy_term(self, vmap):
-        return - tensordot(vmap[self.u], self.var, axes=(range(1, self.ud+1), range(0, self.ud)))
+        return - self.energy_multiplier * tensordot(vmap[self.u], self.var, axes=(range(1, self.ud+1), range(0, self.ud)))
         
 
 class SharedBiasParameters(Parameters):
     """
     like AdvancedBiasParameters, but a given number of trailing dimensions are 'shared'.
     """
-    def __init__(self, rbm, units, dimensions, shared_dimensions, b, name=None):
-        super(SharedBiasParameters, self).__init__(rbm, [units], name=name)
+    def __init__(self, rbm, units, dimensions, shared_dimensions, b, name=None, energy_multiplier=1):
+        super(SharedBiasParameters, self).__init__(rbm, [units], name=name, energy_multiplier = energy_multiplier)
         self.var = b
         self.variables = [self.var]
         self.u = units
@@ -152,12 +152,12 @@ class SharedBiasParameters(Parameters):
         t = tensordot(vmap[self.u], self.var, axes=(range(1, self.nd+1), range(0, self.nd)))
         # now sum t over its trailing shared dimensions, which mimics broadcast + tensordot behaviour.
         axes = range(t.ndim - self.sd, t.ndim)
-        return - T.sum(t, axis=axes)
+        return - self.energy_multiplier * T.sum(t, axis=axes)
 
                
 class SharedProdParameters(Parameters):
-    def __init__(self, rbm, units_list, dimensions, shared_dimensions, W, name=None):
-        super(SharedProdParameters, self).__init__(rbm, units_list, name=name)
+    def __init__(self, rbm, units_list, dimensions, shared_dimensions, W, name=None, energy_multiplier=1):
+        super(SharedProdParameters, self).__init__(rbm, units_list, name=name, energy_multiplier = energy_multiplier)
         assert len(units_list) == 2
         self.var = W
         self.variables = [self.var]
@@ -200,16 +200,16 @@ class SharedProdParameters(Parameters):
         t = tensordot(vmap[self.hu], self.var, axes=(range(1, self.hnd+1), range(0, self.hnd)))
         axes = range(t.ndim - self.hsd, t.ndim)
         import pdb; pdb.set_trace()
-        return - T.sum(t, axis=axes)
+        return - self.energy_multiplier * T.sum(t, axis=axes)
         # return - T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=1)
         
     
 class Convolutional2DParameters(Parameters):
-    def __init__(self, rbm, units_list, W, shape_info=None, name=None):
+    def __init__(self, rbm, units_list, W, shape_info=None, name=None, energy_multiplier=1):
         # use the shape_info parameter to provide a dict with keys:
         # hidden_maps, visible_maps, filter_height, filter_width, visible_height, visible_width, mb_size
         
-        super(Convolutional2DParameters, self).__init__(rbm, units_list, name=name)
+        super(Convolutional2DParameters, self).__init__(rbm, units_list, name=name, energy_multiplier = energy_multiplier)
         assert len(units_list) == 2
         self.var = W # (hidden_maps, visible_maps, filter_height, filter_width)
         self.variables = [self.var]
@@ -290,7 +290,7 @@ class Convolutional2DParameters(Parameters):
             return None
         
     def energy_term(self, vmap):
-        return - T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=[1,2,3])
+        return - self.energy_multiplier * T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=[1,2,3])
         # sum over all but the minibatch axis
         
         
@@ -302,8 +302,8 @@ class Convolutional2DParameters(Parameters):
 
 
 class ThirdOrderParameters(Parameters):
-    def __init__(self, rbm, units_list, W, name=None):
-        super(ThirdOrderParameters, self).__init__(rbm, units_list, name=name)
+    def __init__(self, rbm, units_list, W, name=None, energy_multiplier=1):
+        super(ThirdOrderParameters, self).__init__(rbm, units_list, name=name, energy_multiplier = energy_multiplier)
         assert len(units_list) == 3
         self.var = W
         self.variables = [self.var]
@@ -336,7 +336,7 @@ class ThirdOrderParameters(Parameters):
         self.energy_gradients[self.var] = gradient
         
     def energy_term(self, vmap):
-        return - T.sum(self.terms[self.u1](vmap) * vmap[self.u1], axis=1)
+        return - self.energy_multiplier * T.sum(self.terms[self.u1](vmap) * vmap[self.u1], axis=1)
         # sum is over the u1 dimension, not the minibatch dimension!
 
 
@@ -347,8 +347,8 @@ class ThirdOrderFactoredParameters(Parameters):
     Factored 3rd order parameters, connecting three Units instances. Each factored
     parameter matrix has dimensions (units_size, num_factors).
     """
-    def __init__(self, rbm, units_list, variables, name=None):
-        super(ThirdOrderFactoredParameters, self).__init__(rbm, units_list, name=name)
+    def __init__(self, rbm, units_list, variables, name=None, energy_multiplier=1):
+        super(ThirdOrderFactoredParameters, self).__init__(rbm, units_list, name=name, energy_multiplier = energy_multiplier)
         assert len(units_list) == 3
         assert len(variables) == 3
         self.variables = variables
@@ -390,7 +390,7 @@ class ThirdOrderFactoredParameters(Parameters):
         # TODO: do the same for the gradient without summing!
     
     def energy_term(self, vmap):
-        return - T.sum(self.terms[self.u1](vmap) * vmap[self.u1], axis=1)
+        return - self.energy_multiplier * T.sum(self.terms[self.u1](vmap) * vmap[self.u1], axis=1)
         # sum is over the u1 dimension, not the minibatch dimension!
         
 
@@ -400,7 +400,7 @@ class TransformedParameters(Parameters):
     """
     Transform parameter variables, adapt gradients accordingly
     """
-    def __init__(self, params, transforms, transform_gradients, name=None):
+    def __init__(self, params, transforms, transform_gradients, name=None, energy_multiplier=1):
         """
         params: a Parameters instance for which variables should be transformed
         transforms: a dict mapping variables to their transforms
@@ -431,7 +431,7 @@ class TransformedParameters(Parameters):
         # like in the factor implementation. But then this dummy has to be initialised first...
         
         # initialise
-        super(TransformedParameters, self).__init__(params.rbm, params.units_list, name)
+        super(TransformedParameters, self).__init__(params.rbm, params.units_list, name, energy_multiplier = energy_multiplier)
         
         self.variables = params.variables
         for u, l in params.terms.items(): # in the terms, replace the vars by their transforms
@@ -445,6 +445,6 @@ class TransformedParameters(Parameters):
             
     def energy_term(self, vmap):
         old = self.encapsulated_params.energy_term(vmap)
-        return theano.clone(old, self.transforms)
+        return self.energy_multiplier * theano.clone(old, self.transforms)
         
         
