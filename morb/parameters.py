@@ -156,7 +156,7 @@ class SharedBiasParameters(Parameters):
 
                
 class SharedProdParameters(Parameters):
-    def __init__(self, rbm, units_list, dimensions, shared_dimensions, W, name=None, energy_multiplier=1):
+    def __init__(self, rbm, units_list, dimensions, shared_dimensions, W, name=None, energy_multiplier=1, pooling_operator=T.mean):
         super(SharedProdParameters, self).__init__(rbm, units_list, name=name, energy_multiplier = energy_multiplier)
         assert len(units_list) == 2
         self.var = W
@@ -168,8 +168,10 @@ class SharedProdParameters(Parameters):
         self.hsd = shared_dimensions
         self.hnd = self.hud - self.hsd
 
+        self.pooling_operator = pooling_operator
+
         def from_hu(m, vmap):
-          return T.mean(m, axis=self._shared_axes(vmap))
+          return self.pooling_operator(m, axis=self._shared_axes(vmap))
 
         def to_hu(m):
           return T.shape_padright(m, self.hsd)
@@ -195,7 +197,7 @@ class SharedProdParameters(Parameters):
             return self.var.dimshuffle('x', 0, 'x', 'x', 1)
                 
     def energy_term(self, vmap):
-        return - T.sum(T.dot(vmap[self.vu], self.var) * T.mean(vmap[self.hu], axis=self._shared_axes(vmap)), axis=1)
+        return - T.sum(T.dot(vmap[self.vu], self.var) * self.pooling_operator(vmap[self.hu], axis=self._shared_axes(vmap)), axis=1)
 
         t = tensordot(vmap[self.hu], self.var, axes=(range(1, self.hnd+1), range(0, self.hnd)))
         axes = range(t.ndim - self.hsd, t.ndim)
