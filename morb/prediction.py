@@ -6,7 +6,7 @@ import numpy as np
 
 from morb import parameters
 
-def label_prediction(rbm, vmap, visible_units, label_units, hidden_units, name='func', mb_size=32, mode=None):
+def label_prediction(rbm, vmap, visible_units, label_units, hidden_units, name='func', mb_size=32, mode=None, logprob=True):
     """ Calculate p(y|v), the probability of the labels given the visible state.
 
     $
@@ -76,6 +76,7 @@ def label_prediction(rbm, vmap, visible_units, label_units, hidden_units, name='
             # result: (minibatches, labels)
             label_activation += a
         
+    if not logprob:
         label_activation = T.exp(label_activation)
         
         # normalise over labels
@@ -83,6 +84,18 @@ def label_prediction(rbm, vmap, visible_units, label_units, hidden_units, name='
         
         # (minibatches, labels)
         probability_map.append(label_activation)
+
+    else:
+        # for numerical stability (no exp of large numbers)
+        # see http://lingpipe-blog.com/2009/06/25/log-sum-of-exponentials/
+        max_label_activation = T.max(label_activation, axis=1, keepdims=True)
+        normalised_label_activation = \
+            label_activation \
+            + max_label_activation \
+            + T.log(1e-20 + T.sum(T.exp(label_activation - max_label_activation), axis=1, keepdims=True))
+
+        # (minibatches, labels)
+        probability_map.append(normalised_label_activation)
 
 
 
