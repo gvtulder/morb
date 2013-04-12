@@ -120,7 +120,11 @@ class GradientUpdater(Updater):
         contains a scan op or something.
         """
         super(GradientUpdater, self).__init__(variable)
-        self.update = T.grad(objective, variable)
+        try:
+            self.update = T.grad(objective, variable)
+        except theano.gradient.DisconnectedInputError:
+            print "DisconnectedInputError: %s" % str(variable)
+            self.update = 0
         self.theano_updates = theano_updates
         
     def get_update(self):
