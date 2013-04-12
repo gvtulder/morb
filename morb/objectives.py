@@ -2,6 +2,7 @@ import theano
 import theano.tensor as T
 
 import samplers
+import parameters
 
 
 #def autoencoder(rbm, vmap, visible_units, hidden_units, context_units=[]):
@@ -182,4 +183,68 @@ def cross_entropy(units_list, vmap_targets, vmap_predictions):
     t, p = vmap_targets, vmap_predictions
     return sum((- t[u] * T.log(p[u]) - (1 - t[u]) * T.log(1 - p[u])) for u in units_list)
 
+
+def discriminative_learning_objective(rbm, visible_units, hidden_units, label_units, vmap):
+  """
+  Discriminative training objective: negative log p(y | v).
+  
+  Larochelle, H., Mandel, M., Pascanu, R., & Bengio, Y. (2012).
+  Learning Algorithms for the Classification Restricted Boltzmann Machine.
+  Journal of Machine Learning Research, 13, 643-669.
+  """
+
+  # ( minibatches, )
+  combined_objective = 0
+
+  # Larochelle, 2012
+  for y in label_units:
+      all_params_y = rbm.params_affecting(y)
+      
+      # bias for labels
+      by = [ param for param in all_params_y if param.affects_only(y) ]
+      assert len(by)==1
+      assert isinstance(by[0], parameters.BiasParameters)
+          
+      # (minibatches, labels)
+      by_weights_for_v = T.shape_padleft(by[0].var, 1)
+
+      # collect all components
+      label_activation = by_weights_for_v
+
+      for h in hidden_units:
+          h_act_given_v = h.activation(vmap, skip_units=label_units)
+          
+          # weights U connecting labels to hidden
+          U = [ param for param in all_params_y if param.affects(h) ]
+          
+          assert len(U)==1
+          assert U[0].weights_for
+          
+          # sum over hiddens
+          a = T.nnet.softplus(U[0].weights_for(y) + T.shape_padright(h_act_given_v, 1))
+          # sum over hiddens
+          a = T.sum(a, axis=range(1,a.ndim - 1))
+          # result: (minibatches, labels)
+          label_activation += a
+      
+#     label_activation = T.exp(label_activation)
+#     
+#     # normalise over labels
+#     label_activation = label_activation / T.sum(label_activation, axis=1, keepdims=True)
+#     obj = T.log(1e-20 + label_activation) * vmap[y]
+
+      # for numerical stability (no exp of large numbers)
+      # see http://lingpipe-blog.com/2009/06/25/log-sum-of-exponentials/
+      max_label_activation = T.max(label_activation, axis=1, keepdims=True)
+      normalised_label_activation = \
+          label_activation * vmap[y] \
+          - max_label_activation \
+          - T.log(1e-20 + T.sum(T.exp(label_activation - max_label_activation), axis=1, keepdims=True))
+      obj = normalised_label_activation * vmap[y]
+      
+      # (minibatches, )
+      combined_objective += T.sum(obj, axis=1)
+
+  # sum over minibatches
+  return T.sum(combined_objective)
     
