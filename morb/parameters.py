@@ -105,6 +105,16 @@ class AdvancedProdParameters(Parameters):
         # we do not sum over the first dimension, which is reserved for minibatches!
         return - self.energy_multiplier * neg_energy # don't forget to flip the sign!
 
+    def weights_for(self, units):
+        assert units in [self.vu, self.hu]
+        if self.vu == units:
+            # (minibatches, maps, map dims, visible)
+            return self.var.dimshuffle('x', 1, 2, 3, 0)
+        else:
+            # (minibatches, hidden, visible)
+            raise Exception("AdvancedProdWeights.weights_for(hidden) not implemented")
+            return self.var.dimshuffle('x', 0, 'x', 'x', 1)
+
 
 class AdvancedBiasParameters(Parameters):
     def __init__(self, rbm, units, dimensions, b, name=None, energy_multiplier=1):
