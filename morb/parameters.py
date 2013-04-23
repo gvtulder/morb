@@ -211,7 +211,6 @@ class SharedProdParameters(Parameters):
 
         t = tensordot(vmap[self.hu], self.var, axes=(range(1, self.hnd+1), range(0, self.hnd)))
         axes = range(t.ndim - self.hsd, t.ndim)
-        import pdb; pdb.set_trace()
         return - self.energy_multiplier * T.sum(t, axis=axes)
         # return - T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=1)
         
