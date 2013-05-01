@@ -268,8 +268,16 @@ class Convolutional2DParameters(Parameters):
             v_shuffled = vmap[self.vu].dimshuffle(1, 0, 2, 3)
             h_shuffled = vmap[self.hu].dimshuffle(1, 0, 2, 3)
             
-            c = conv.conv2d(v_shuffled, h_shuffled, border_mode='valid', image_shape=i_shape, filter_shape=f_shape)   
-            return c.dimshuffle(1, 0, 2, 3)
+            c = conv.conv2d(v_shuffled, h_shuffled, border_mode='valid', image_shape=i_shape, filter_shape=f_shape)
+            # must use the mean over all hidden nodes
+            # ( = the size of the feature maps )
+            # (see, e.g., Lee et al., 2012:
+            #  "Unsupervised Learning of Hierarchical Representations
+            #   with Convolutional Deep Belief Networks")
+            number_of_hiddens = ((self.shape_info['visible_height']-self.shape_info['filter_height']+1) \
+                * (self.shape_info['visible_width']-self.shape_info['filter_width']+1))
+
+            return c.dimshuffle(1, 0, 2, 3) / number_of_hiddens
             
         self.energy_gradients[self.var] = gradient
         self.energy_gradient_sums[self.var] = gradient_sum
