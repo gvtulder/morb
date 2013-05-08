@@ -68,6 +68,16 @@ class BiasParameters(Parameters):
         # bias is NOT TRANSPOSED because it's a vector, and apparently vectors are COLUMN vectors by default.
 
 
+class QuadraticBiasParameters(BiasParameters):
+    def __init__(self, rbm, units, b, name=None, energy_multiplier=1):
+        super(QuadraticBiasParameters, self).__init__(rbm, units, b, name, energy_multiplier)
+        self.energy_gradients[self.var] = lambda vmap: vmap[self.u] - self.var.dimshuffle('x', 0)
+        
+    def energy_term(self, vmap):
+        return self.energy_multiplier * (- T.dot(vmap[self.u], self.var) + (self.var ** 2) / 2).dimshuffle('x', 0)
+        # bias is NOT TRANSPOSED because it's a vector, and apparently vectors are COLUMN vectors by default.
+
+
 class AdvancedProdParameters(Parameters):
     def __init__(self, rbm, units_list, dimensions_list, W, name=None, energy_multiplier=1):
         super(AdvancedProdParameters, self).__init__(rbm, units_list, name=name, energy_multiplier = energy_multiplier)
@@ -163,6 +173,30 @@ class SharedBiasParameters(Parameters):
         # now sum t over its trailing shared dimensions, which mimics broadcast + tensordot behaviour.
         axes = range(t.ndim - self.sd, t.ndim)
         return - self.energy_multiplier * T.sum(t, axis=axes)
+
+
+class SharedQuadraticBiasParameters(SharedBiasParameters):
+    def __init__(self, rbm, units, dimensions, shared_dimensions, b, name=None, energy_multiplier=1):
+        super(SharedQuadraticBiasParameters, self).__init__(rbm, units, dimensions, shared_dimensions, b, name, energy_multiplier)
+
+        self.terms[self.u] = lambda vmap: T.shape_padright(self.var, self.sd)
+        self.energy_gradients[self.var] = lambda vmap: T.mean(vmap[self.u], axis=self._shared_axes(vmap)) - self.var.dimshuffle('x', 0)
+            
+    def energy_term(self, vmap):
+        # b_padded = T.shape_padright(self.var, self.sd)
+        # return - T.sum(tensordot(vmap[self.u], b_padded, axes=(range(1, self.ud+1), range(0, self.ud))), axis=0)
+        # this does not work because tensordot cannot handle broadcastable dimensions.
+        # instead, the dimensions of b_padded which are broadcastable should be summed out afterwards.
+        # this comes down to the same thing. so:
+        t = tensordot(vmap[self.u], self.var, axes=(range(1, self.nd+1), range(0, self.nd)))
+        # now sum t over its trailing shared dimensions, which mimics broadcast + tensordot behaviour.
+        axes = range(t.ndim - self.sd, t.ndim)
+        number_of_shared_units = 1
+        u_shape = vmap[self.u].shape
+        for a in self._shared_axes(vmap):
+          number_of_shared_units *= u_shape[a]
+        number_of_shared_units = T.cast(number_of_shared_units, dtype=theano.config.floatX)
+        return self.energy_multiplier * (- T.sum(t, axis=axes) + T.sum(number_of_shared_units * (self.var * self.var) / 2.0))
 
                
 class SharedProdParameters(Parameters):

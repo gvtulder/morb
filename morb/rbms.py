@@ -69,7 +69,7 @@ class GaussianBinaryRBM(RBM): # Gaussian visible units
         # parameters
         parameters.FixedBiasParameters(self, self.v.precision_units)
         self.W = parameters.ProdParameters(self, [self.v, self.h], theano.shared(value = self._initial_W(), name='W'), name='W') # weights
-        self.bv = parameters.BiasParameters(self, self.v, theano.shared(value = self._initial_bv(), name='bv'), name='bv') # visible bias
+        self.bv = parameters.QuadraticBiasParameters(self, self.v, theano.shared(value = self._initial_bv(), name='bv'), name='bv') # visible bias
         self.bh = parameters.BiasParameters(self, self.h, theano.shared(value = self._initial_bh(), name='bh'), name='bh') # hidden bias
         
     def _initial_W(self):
