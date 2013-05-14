@@ -301,6 +301,10 @@ class Convolutional2DParameters(Parameters):
             
             v_shuffled = vmap[self.vu].dimshuffle(1, 0, 2, 3)
             h_shuffled = vmap[self.hu].dimshuffle(1, 0, 2, 3)
+            # flip filters (see Lee et al., 2012:
+            #  "Unsupervised Learning of Hierarchical Representations
+            #   with Convolutional Deep Belief Networks")
+            h_shuffled = h_shuffled[:, :, ::-1, ::-1]
             
             c = conv.conv2d(v_shuffled, h_shuffled, border_mode='valid', image_shape=i_shape, filter_shape=f_shape)
             # must use the mean over all hidden nodes
