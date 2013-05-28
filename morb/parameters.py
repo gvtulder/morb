@@ -4,8 +4,8 @@ import theano
 import theano.tensor as T
 from theano.tensor.nnet import conv
 
-from morb.misc import tensordot # better tensordot implementation that can be GPU accelerated
-# tensordot = T.tensordot # use theano implementation
+# from morb.misc import tensordot # better tensordot implementation that can be GPU accelerated
+tensordot = T.tensordot # use theano implementation
 
 class FixedBiasParameters(Parameters):
     # Bias fixed at -1, which is useful for some energy functions (like Gaussian with fixed variance, Beta)
@@ -220,10 +220,13 @@ class SharedProdParameters(Parameters):
         def to_hu(m):
           return T.shape_padright(m, self.hsd)
         
-        self.terms[self.vu] = lambda vmap: T.dot(from_hu(vmap[self.hu], vmap), W.T)
-        self.terms[self.hu] = lambda vmap: to_hu(T.dot(vmap[self.vu], W))
+        self.terms[self.vu] = lambda vmap: tensordot(from_hu(vmap[self.hu], vmap), W, \
+                                                     ( range(1, self.hnd+1), range(1, self.hnd+1) ))
+        #                                  T.dot(from_hu(vmap[self.hu], vmap), W.T)
+        self.terms[self.hu] = lambda vmap: to_hu(tensordot(vmap[self.vu], W, ( (1,), (0,) )))
+        #                                  to_hu(T.dot(vmap[self.vu], W))
         
-        self.energy_gradients[self.var] = lambda vmap: vmap[self.vu].dimshuffle(0, 1, 'x') * from_hu(vmap[self.hu], vmap).dimshuffle(0, 'x', 1)
+        self.energy_gradients[self.var] = lambda vmap: vmap[self.vu].dimshuffle([0,1] + ['x'] * self.hnd) * from_hu(vmap[self.hu], vmap).dimshuffle([0,'x'] + range(1, self.hnd+1))
         # self.energy_gradient_sums[self.var] = lambda vmap: T.dot(vmap[self.vu].T, from_hu(vmap[self.hu], vmap))
         
     def _shared_axes(self, vmap):
@@ -234,19 +237,15 @@ class SharedProdParameters(Parameters):
         assert units in [self.vu, self.hu]
         if self.vu == units:
             # (minibatches, maps, map dims, visible)
-            return self.var.dimshuffle('x', 1, 'x', 'x', 0)
+            d = ['x'] + range(1, self.hnd+1) + ['x'] * self.hsd + [0]
+            return self.var.dimshuffle(d)
         else:
             # (minibatches, hidden, visible)
             raise Exception("SharedProdWeights.weights_for(hidden) not implemented")
             return self.var.dimshuffle('x', 0, 'x', 'x', 1)
                 
     def energy_term(self, vmap):
-        return - T.sum(T.dot(vmap[self.vu], self.var) * self.pooling_operator(vmap[self.hu], axis=self._shared_axes(vmap)), axis=1)
-
-        t = tensordot(vmap[self.hu], self.var, axes=(range(1, self.hnd+1), range(0, self.hnd)))
-        axes = range(t.ndim - self.hsd, t.ndim)
-        return - self.energy_multiplier * T.sum(t, axis=axes)
-        # return - T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=1)
+        return 0 # - T.sum(self.terms[self.vu](vmap) * vmap[self.vu], axis=1)
         
     
 class Convolutional2DParameters(Parameters):
