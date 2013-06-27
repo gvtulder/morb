@@ -272,11 +272,13 @@ class Convolutional2DParameters(Parameters):
                 shuffled_filter_shape = [self.filter_shape[k] for k in (1, 0, 2, 3)]
             else:
                 shuffled_filter_shape = None
+            # (this requires a flipped convolution; conv2d does that)
             return conv.conv2d(vmap[self.hu], W_shuffled, border_mode='full', \
                                image_shape=self.hidden_shape, filter_shape=shuffled_filter_shape)
             
         def term_hu(vmap):
             # input = visibles, output = hiddens, flip filters
+            # (flip because conv2d flips the kernel a second time)
             W_flipped = self.var[:, :, ::-1, ::-1]
             return conv.conv2d(vmap[self.vu], W_flipped, border_mode='valid', \
                                image_shape=self.visible_shape, filter_shape=self.filter_shape)
@@ -300,9 +302,7 @@ class Convolutional2DParameters(Parameters):
             
             v_shuffled = vmap[self.vu].dimshuffle(1, 0, 2, 3)
             h_shuffled = vmap[self.hu].dimshuffle(1, 0, 2, 3)
-            # flip filters (see Lee et al., 2012:
-            #  "Unsupervised Learning of Hierarchical Representations
-            #   with Convolutional Deep Belief Networks")
+            # (flip because conv2d flips the kernel a second time)
             h_shuffled = h_shuffled[:, :, ::-1, ::-1]
             
             c = conv.conv2d(v_shuffled, h_shuffled, border_mode='valid', image_shape=i_shape, filter_shape=f_shape)
