@@ -6,7 +6,7 @@ import numpy as np
 
 from morb import parameters
 
-def label_prediction(rbm, vmap, visible_units, label_units, hidden_units, name='func', mb_size=32, mode=None, logprob=True):
+def label_prediction(rbm, vmap, visible_units, label_units, hidden_units, context_units=[], name='func', mb_size=32, mode=None, logprob=True):
     """ Calculate p(y|v), the probability of the labels given the visible state.
 
     $
@@ -41,7 +41,6 @@ def label_prediction(rbm, vmap, visible_units, label_units, hidden_units, name='
     :type visible_units:
         list of morb.base.Units
     """
-    # TODO, some time, context
     
     probability_map = []
 
@@ -105,11 +104,15 @@ def label_prediction(rbm, vmap, visible_units, label_units, hidden_units, name='
         shape = (1,) * vmap[u].ndim
         data_sets[u] = theano.shared(value = np.zeros(shape, dtype=theano.config.floatX),
                                       name="dataset for '%s'"  % u.name)
+    for u in context_units:
+        shape = (1,) * vmap[u].ndim
+        data_sets[u] = theano.shared(value = np.zeros(shape, dtype=theano.config.floatX),
+                                      name="dataset for '%s'"  % u.name)
 
     index = T.lscalar() # index to a minibatch
     
     # construct givens for the compiled theano function - mapping variables to data
-    givens = dict((vmap[u], data_sets[u][index*mb_size:(index+1)*mb_size]) for u in visible_units)
+    givens = dict((vmap[u], data_sets[u][index*mb_size:(index+1)*mb_size]) for u in list(visible_units)+list(context_units))
 
     TF = theano.function([index], probability_map, givens = givens, name = name, mode = mode)
 
