@@ -22,15 +22,19 @@ def gaussian(a, var=1.0):
         
 
 def multinomial(a):
-    # 0 = minibatches
-    # 1 = units
-    # 2 = states
-    p = a.reshape((a.shape[0]*a.shape[1], a.shape[2]))    
-    # r 0 = minibatches * units
-    # r 1 = states
-    # this is the expected input for theano.nnet.softmax and theano_rng.multinomial
-    s = theano_rng.multinomial(n=1, pvals=p, dtype=theano.config.floatX)    
-    return s.reshape(a.shape) # reshape back to original shape
+    if a.ndim == 2:
+        return theano_rng.multinomial(n=1, pvals=a, dtype=theano.config.floatX)
+
+    else:
+        # 0 = minibatches
+        # 1 = units
+        # 2 = states
+        p = a.reshape((a.shape[0]*a.shape[1], a.shape[2]))
+        # r 0 = minibatches * units
+        # r 1 = states
+        # this is the expected input for theano.nnet.softmax and theano_rng.multinomial
+        s = theano_rng.multinomial(n=1, pvals=p, dtype=theano.config.floatX)
+        return s.reshape(a.shape) # reshape back to original shape
     
 
 def exponential(a):
