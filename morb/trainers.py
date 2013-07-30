@@ -31,7 +31,7 @@ class MinibatchTrainer(Trainer):
         TF = theano.function([index], monitors,
             updates = updates, givens = givens, name = name, mode = mode)    
                 
-        def func(dmap):
+        def func(dmap, shuffle_batches_rng=False):
             # dmap is a dict that maps unit types on their respective datasets (numeric).
             units_list = dmap.keys()
             data_sizes = [int(np.ceil(dmap[u].shape[0] / float(mb_size))) for u in units_list]
@@ -44,8 +44,14 @@ class MinibatchTrainer(Trainer):
             for i, u in enumerate(units_list):
                 data_sets[u].set_value(data_cast[i], borrow=True)
                 
-            for batch_index in xrange(min(data_sizes)):
-                yield TF(batch_index)
+            if shuffle_batches_rng:
+                idxs = range(min(data_sizes))
+                shuffle_batches_rng.shuffle(idxs)
+                for batch_index in idxs:
+                    yield TF(batch_index)
+            else:
+                for batch_index in xrange(min(data_sizes)):
+                    yield TF(batch_index)
                 
         return func
                         
