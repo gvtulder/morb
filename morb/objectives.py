@@ -246,5 +246,5 @@ def discriminative_learning_objective(rbm, visible_units, hidden_units, label_un
       combined_objective += T.sum(obj, axis=1)
 
   # sum over minibatches
-  return T.sum(combined_objective)
-    
+  return T.mean(combined_objective)
+
