@@ -213,6 +213,8 @@ class SharedProdParameters(Parameters):
         self.hnd = self.hud - self.hsd
 
         self.pooling_operator = pooling_operator
+        if pooling_operator != T.sum:
+          raise "Pooling operator is not sum, are you sure that will work?"
 
         def from_hu(m, vmap):
           return self.pooling_operator(m, axis=self._shared_axes(vmap))
@@ -227,7 +229,8 @@ class SharedProdParameters(Parameters):
         #                                  to_hu(T.dot(vmap[self.vu], W))
         
         self.energy_gradients[self.var] = lambda vmap: vmap[self.vu].dimshuffle([0,1] + ['x'] * self.hnd) * from_hu(vmap[self.hu], vmap).dimshuffle([0,'x'] + range(1, self.hnd+1))
-        # self.energy_gradient_sums[self.var] = lambda vmap: T.dot(vmap[self.vu].T, from_hu(vmap[self.hu], vmap))
+        if self.hnd == 1:
+            self.energy_gradient_sums[self.var] = lambda vmap: T.dot(vmap[self.vu].T, from_hu(vmap[self.hu], vmap))
         
     def _shared_axes(self, vmap):
         d = vmap[self.hu].ndim
@@ -245,7 +248,7 @@ class SharedProdParameters(Parameters):
             return self.var.dimshuffle('x', 0, 'x', 'x', 1)
                 
     def energy_term(self, vmap):
-        return 0 # - T.sum(self.terms[self.vu](vmap) * vmap[self.vu], axis=1)
+        return - self.energy_multiplier * T.sum(vmap[self.vu] * self.terms[self.vu](vmap), axis=1)
         
     
 class Convolutional2DParameters(Parameters):
@@ -311,10 +314,13 @@ class Convolutional2DParameters(Parameters):
             # (see, e.g., Lee et al., 2012:
             #  "Unsupervised Learning of Hierarchical Representations
             #   with Convolutional Deep Belief Networks")
-            number_of_hiddens = ((self.shape_info['visible_height']-self.shape_info['filter_height']+1) \
-                * (self.shape_info['visible_width']-self.shape_info['filter_width']+1))
+            #
+            # (2013.08.02: I now think this is not correct.)
+#           number_of_hiddens = ((self.shape_info['visible_height']-self.shape_info['filter_height']+1) \
+#               * (self.shape_info['visible_width']-self.shape_info['filter_width']+1))
+#           return c.dimshuffle(1, 0, 2, 3) / number_of_hiddens
 
-            return c.dimshuffle(1, 0, 2, 3) / number_of_hiddens
+            return c.dimshuffle(1, 0, 2, 3)
             
         self.energy_gradients[self.var] = gradient
         self.energy_gradient_sums[self.var] = gradient_sum
