@@ -237,7 +237,7 @@ def discriminative_learning_objective(rbm, visible_units, hidden_units, label_un
       # see http://lingpipe-blog.com/2009/06/25/log-sum-of-exponentials/
       max_label_activation = T.max(label_activation, axis=1, keepdims=True)
       normalised_label_activation = \
-          label_activation * vmap[y] \
+          label_activation \
           - max_label_activation \
           - T.log(1e-20 + T.sum(T.exp(label_activation - max_label_activation), axis=1, keepdims=True))
       obj = normalised_label_activation * vmap[y]
