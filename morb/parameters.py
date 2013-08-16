@@ -9,12 +9,12 @@ tensordot = T.tensordot # use theano implementation
 
 class FixedBiasParameters(Parameters):
     # Bias fixed at -1, which is useful for some energy functions (like Gaussian with fixed variance, Beta)
-    def __init__(self, rbm, units, name=None, energy_multiplier=1):
+    def __init__(self, rbm, units, name=None, energy_multiplier=1, value=-1):
         super(FixedBiasParameters, self).__init__(rbm, [units], name=name, energy_multiplier = energy_multiplier)
         self.variables = []
         self.u = units
         
-        self.terms[self.u] = lambda vmap: T.constant(-1, theano.config.floatX) # T.constant is necessary so scan doesn't choke on it
+        self.terms[self.u] = lambda vmap: T.constant(value, theano.config.floatX) # T.constant is necessary so scan doesn't choke on it
         
     def energy_term(self, vmap):
         s = vmap[self.u]
