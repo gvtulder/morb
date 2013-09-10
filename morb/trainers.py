@@ -39,7 +39,12 @@ class MinibatchTrainer(Trainer):
             if data_sizes.count(data_sizes[0]) != len(data_sizes): # check if all data sizes are equal
                 raise RuntimeError("The sizes of the supplied datasets for the different input units are not equal.")
 
-            data_cast = [dmap[u].astype(theano.config.floatX) for u in units_list]
+            data_cast = []
+            for u in units_list:
+              if dmap[u].dtype == theano.config.floatX:
+                data_cast.append(dmap[u])
+              else:
+                data_cast.append(dmap[u].astype(theano.config.floatX))
             
             for i, u in enumerate(units_list):
                 data_sets[u].set_value(data_cast[i], borrow=True)
