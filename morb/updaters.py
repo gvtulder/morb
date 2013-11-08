@@ -4,7 +4,7 @@ import samplers
 import theano
 import theano.tensor as T
 import numpy as np
-        
+
 
 class SelfUpdater(Updater):
     def get_update(self):
@@ -12,7 +12,7 @@ class SelfUpdater(Updater):
 
 DecayUpdater = SelfUpdater
 # weight decay: the update == the parameter values themselves
-# (decay constant is taken care of by ScaleUpdater)       
+# (decay constant is taken care of by ScaleUpdater)
 
 class MomentumUpdater(Updater):
     def __init__(self, pu, momentum, variable_shape):
@@ -22,20 +22,20 @@ class MomentumUpdater(Updater):
         self.pu = pu
         self.momentum = momentum
         self.variable_shape = variable_shape
-        
+
         name = pu.variable.name + "_momentum"
         self.previous_update = theano.shared(value = np.zeros(self.variable_shape, dtype=theano.config.floatX), name=name)
-        
+
         # Update calculation has to happen in __init__, because else if get_theano_updates
         # is called before get_update, the state update will not be included in the dict.
         # This is a bit nasty, and it probably applies for all updaters with state.
         # maybe this is a design flaw?
         self.update = self.pu.get_update() + self.momentum * self.previous_update
         self.theano_updates = { self.previous_update: self.update }
-                    
+
     def get_update(self):
         return self.update
-        
+
     def get_theano_updates(self):
         u = self.theano_updates.copy() # the MomentumUpdater's own state updates
         u.update(self.pu.get_theano_updates()) # the state updates of the contained Updater
@@ -48,14 +48,28 @@ class CDUpdater(Updater):
         # this updater has only one stats object, so make it more conveniently accessible
         self.stats = stats
         self.rbm = rbm
-        
+
     def get_update(self):
-        positive_term = self.rbm.energy_gradient_sum(self.variable, self.stats['data'])
-        negative_term = self.rbm.energy_gradient_sum(self.variable, self.stats['model'])
-        
+        positive_term = self.rbm.energy_gradient_sum(self.variable, self.stats['data'], self.stats.pmap)
+        negative_term = self.rbm.energy_gradient_sum(self.variable, self.stats['model'], self.stats.pmap)
+
         return positive_term - negative_term
-                
-    
+
+
+class FastPCDUpdater(Updater):
+    def __init__(self, rbm, variable, stats):
+        super(FastPCDUpdater, self).__init__(variable, [stats])
+        # this updater has only one stats object, so make it more conveniently accessible
+        self.stats = stats
+        self.rbm = rbm
+
+    def get_update(self):
+        positive_term = self.rbm.energy_gradient_sum(self.variable, self.stats['data'], self.stats.pmap_regular)
+        negative_term = self.rbm.energy_gradient_sum(self.variable, self.stats['fantasy_model'], self.stats.pmap_regular_plus_fast)
+
+        return positive_term - negative_term
+
+
 class SparsityUpdater(Updater):
     def __init__(self, rbm, variable, sparsity_targets, stats):
         # sparsity_targets is a dict mapping Units instances to their target activations
@@ -63,17 +77,17 @@ class SparsityUpdater(Updater):
         self.stats = stats
         self.rbm = rbm
         self.sparsity_targets = sparsity_targets
-        
-    def get_update(self):        
+
+    def get_update(self):
         # modify vmap: subtract target values
         # this follows the formulation in 'Biasing RBMs to manipulate latent selectivity and sparsity' by Goh, Thome and Cord (2010), formulas (8) and (9).
         vmap = self.stats['data'].copy()
         for u, target in self.sparsity_targets.items():
             if u in vmap:
                 vmap[u] -= target
-        
+
         return - self.rbm.energy_gradient_sum(self.variable, vmap) # minus sign is important!
-        
+
 
 class BoundUpdater(Updater):
     """
@@ -84,12 +98,12 @@ class BoundUpdater(Updater):
     this updater will force the parameter values to be positive.
     The bound is always inclusive.
     """
-    def __init__(self, pu, bound=0, type='lower'):  
+    def __init__(self, pu, bound=0, type='lower'):
         super(BoundUpdater, self).__init__(pu.variable, pu.stats_list)
         self.pu = pu
         self.bound = bound
         self.type = type
-                    
+
     def get_update(self):
         update = self.pu.get_update()
         if self.type == 'lower':
@@ -98,19 +112,19 @@ class BoundUpdater(Updater):
             condition = update <= self.bound
         # return T.switch(condition, update, T.ones_like(update) * self.bound)
         return T.switch(condition, update, self.variable)
-      
+
     def get_theano_updates(self):
         # The BoundUpdater has no state, so the only updates that should be returned
         # are those of the encapsulated updater.
         return self.pu.get_theano_updates()
-        
-        
-        
+
+
+
 class GradientUpdater(Updater):
     """
     Takes any objective in the form of a scalar Theano expression and uses T.grad
     to compute the update with respect to the given parameter variable.
-    
+
     This can be used to train/finetune a model supervisedly or as an auto-
     encoder, for example.
     """
@@ -126,10 +140,10 @@ class GradientUpdater(Updater):
             print "DisconnectedInputError: %s" % str(variable)
             self.update = 0
         self.theano_updates = theano_updates
-        
+
     def get_update(self):
         return self.update
-        
+
     def get_theano_updates(self):
         return self.theano_updates
 
@@ -144,7 +158,7 @@ class GradientUpdater(Updater):
 #     to the free energy of the model, as described in "A connection between score matching
 #     and denoising autoencoders" by Vincent et al., such that it yields the denoising
 #     autoencoder objective for a Gaussian-Bernoulli RBM.
-    
+
 #     This approach is only valid if the domain of the input is the real numbers. That means it
 #     won't work for binary input units, or other unit types that don't define a distribution
 #     on the entire real line. In practice, this is used almost exclusively with Gaussian

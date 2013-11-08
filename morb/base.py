@@ -19,36 +19,36 @@ class Units(object):
         self.proxy_units = [] # list of units that are proxies of this Units instance
         self.rbm.add_units(self)
         
-    def activation(self, vmap, skip_units=[]):
-        terms = [param.activation_term_for(self, vmap) for param in self.rbm.params_affecting(self) if not param.affects_any(skip_units)]
+    def activation(self, vmap, pmap, skip_units=[]):
+        terms = [param.activation_term_for(self, vmap, pmap) for param in self.rbm.params_affecting(self) if not param.affects_any(skip_units)]
         # the linear activation is the sum of the activations for each of the parameters.
         return sum(terms, T.constant(0, theano.config.floatX))
         
-    def sample_from_activation(self, vmap):
+    def sample_from_activation(self, vmap, pmap):
         raise NotImplementedError("Sampling not supported for this Units instance: %s" % repr(self))
         
-    def mean_field_from_activation(self, vmap):
+    def mean_field_from_activation(self, vmap, pmap):
         raise NotImplementedError("Mean field not supported for this Units instance: %s" % repr(self))
         
-    def free_energy_term_from_activation(self, vmap):
+    def free_energy_term_from_activation(self, vmap, pmap):
         raise NotImplementedError("Free energy calculation not supported for this Units instance: %s" % repr(self))
         
-    def log_prob_from_activation(self, vmap, activation_vmap):
+    def log_prob_from_activation(self, vmap, activation_vmap, pmap):
         raise NotImplementedError("Log-probability calculation not supported for this Units instance: %s" % repr(self))
         # note that this gives the log probability density for continuous units, but the log probability mass for discrete ones.
                 
-    def sample(self, vmap):
-        return self.sample_from_activation({ self: self.activation(vmap) })
+    def sample(self, vmap, pmap):
+        return self.sample_from_activation({ self: self.activation(vmap, pmap) })
         
-    def mean_field(self, vmap):
-        return self.mean_field_from_activation({ self: self.activation(vmap) })
+    def mean_field(self, vmap, pmap):
+        return self.mean_field_from_activation({ self: self.activation(vmap, pmap) })
         
-    def free_energy_term(self, vmap):
-        return self.free_energy_term_from_activation({ self: self.activation(vmap) })
+    def free_energy_term(self, vmap, pmap):
+        return self.free_energy_term_from_activation({ self: self.activation(vmap, pmap) })
         
-    def log_prob(self, vmap):
-        activation_vmap = { self: self.activation(vmap) }
-        return self.log_prob_from_activation(vmap, activation_vmap)
+    def log_prob(self, vmap, pmap):
+        activation_vmap = { self: self.activation(vmap, pmap) }
+        return self.log_prob_from_activation(vmap, activation_vmap, pmap)
         
     def __repr__(self):
         return "<morb:Units '%s'>" % self.name
@@ -61,20 +61,20 @@ class ProxyUnits(Units):
         self.func = func # the function to apply
         # simple proxy units do not support mean field, the class needs to be overridden for this.
         
-    def sample(self, vmap):
-        s = self.units.sample(vmap)
+    def sample(self, vmap, pmap):
+        s = self.units.sample(vmap, pmap)
         return self.func(s)
         
-    def sample_from_activation(self, vmap):
-        s = self.units.sample_from_activation(vmap)
+    def sample_from_activation(self, vmap, pmap):
+        s = self.units.sample_from_activation(vmap, pmap)
         return self.func(s)
         
-    def mean_field(self, vmap):
-        m = self.units.mean_field(vmap)
+    def mean_field(self, vmap, pmap):
+        m = self.units.mean_field(vmap, pmap)
         return self.func(m)
         
-    def mean_field_from_activation(self, vmap):
-        m = self.units.mean_field_from_activation(vmap)
+    def mean_field_from_activation(self, vmap, pmap):
+        m = self.units.mean_field_from_activation(vmap, pmap)
         return self.func(m)
         
         
@@ -89,16 +89,16 @@ class Parameters(object):
         self.energy_multiplier = energy_multiplier
         self.rbm.add_parameters(self)
         
-    def activation_term_for(self, units, vmap):
-        return self.terms[units](vmap)
+    def activation_term_for(self, units, vmap, pmap):
+        return self.terms[units](vmap, pmap)
         
-    def energy_gradient_for(self, variable, vmap):
+    def energy_gradient_for(self, variable, vmap, pmap):
         """
         Returns the energy gradient for each example in the batch.
         """
-        return self.energy_multiplier * self.energy_gradients[variable](vmap)
+        return self.energy_multiplier * self.energy_gradients[variable](vmap, pmap)
         
-    def energy_gradient_sum_for(self, variable, vmap):
+    def energy_gradient_sum_for(self, variable, vmap, pmap):
         """
         Returns the energy gradient, summed across the minibatch dimension.
         If a fast implementation for this is available in the energy_gradient_sums
@@ -111,11 +111,11 @@ class Parameters(object):
         efficiently with a dot product.
         """
         if variable in self.energy_gradient_sums:
-            return self.energy_multiplier * self.energy_gradient_sums[variable](vmap)
+            return self.energy_multiplier * self.energy_gradient_sums[variable](vmap, pmap)
         else:
-            return T.sum(self.energy_gradients[variable](vmap), axis=0)
+            return T.sum(self.energy_gradients[variable](vmap, pmap), axis=0)
         
-    def energy_term(self, vmap):
+    def energy_term(self, vmap, pmap):
         raise NotImplementedError("Parameters base class")
         
     def affects(self, units):
@@ -334,25 +334,25 @@ class RBM(object):
         return set([u for u in dependent_units_list if u not in given_units_list])
         # note that there are no dependency checks here.
         
-    def energy_gradient(self, variable, vmap):
+    def energy_gradient(self, variable, vmap, pmap):
         """
         sums the gradient contributions of all Parameters instances for the given variable.
         """
-        return sum((p.energy_gradient_for(variable, vmap) for p in self.params_list if variable in p.variables), T.constant(0, theano.config.floatX))
+        return sum((p.energy_gradient_for(variable, vmap, pmap) for p in self.params_list if variable in p.variables), T.constant(0, theano.config.floatX))
         
-    def energy_gradient_sum(self, variable, vmap):
+    def energy_gradient_sum(self, variable, vmap, pmap):
         """
         sums the gradient contributions of all Parameters instances for the given variable,
         where the contributions are summed over the minibatch dimension.
         """
-        return sum((p.energy_gradient_sum_for(variable, vmap) for p in self.params_list if variable in p.variables), T.constant(0, theano.config.floatX))
+        return sum((p.energy_gradient_sum_for(variable, vmap, pmap) for p in self.params_list if variable in p.variables), T.constant(0, theano.config.floatX))
     
-    def energy_terms(self, vmap):
-        return [params.energy_term(vmap) for params in self.params_list]
+    def energy_terms(self, vmap, pmap):
+        return [params.energy_term(vmap, pmap) for params in self.params_list]
         
-    def energy(self, vmap):
+    def energy(self, vmap, pmap):
         # the energy is the sum of the energy terms for each of the parameters.
-        return sum(self.energy_terms(vmap), T.constant(0, theano.config.floatX))
+        return sum(self.energy_terms(vmap, pmap), T.constant(0, theano.config.floatX))
         
     def complete_units_list_split(self, units_list):
         """
@@ -398,7 +398,7 @@ class RBM(object):
             
         return vmap
     
-    def sample_from_activation(self, vmap):
+    def sample_from_activation(self, vmap, pmap):
         """
         This method allows to sample a given set of Units instances at the same time and enforces consistency.
         say v is a Units instance, and x is a ProxyUnits instance tied to v. Then the following:
@@ -423,7 +423,7 @@ class RBM(object):
         # sample all basic units
         samples = {}
         for u in basic_units:
-            samples[u] = u.sample_from_activation(vmap)
+            samples[u] = u.sample_from_activation(vmap, pmap)
             
         # compute all proxy units
         for u in proxy_units:
@@ -431,7 +431,7 @@ class RBM(object):
         
         return samples
     
-    def sample(self, units_list, vmap):
+    def sample(self, units_list, vmap, pmap):
         """
         This method allows to sample a given set of Units instances at the same time and enforces consistency.
         say v is a Units instance, and x is a ProxyUnits instance tied to v. Then the following:
@@ -441,20 +441,20 @@ class RBM(object):
         To remedy this, only the 'basic' units are sampled, and the values of the proxy units are computed.
         All proxies are always included in the returned vmap.
         """
-        activations_vmap = self.activations(units_list, vmap)
-        return self.sample_from_activation(activations_vmap)
+        activations_vmap = self.activations(units_list, vmap, pmap)
+        return self.sample_from_activation(activations_vmap, pmap)
     
-    def mean_field_from_activation(self, vmap):
+    def mean_field_from_activation(self, vmap, pmap):
         units_list = vmap.keys()
         units_list = self.complete_units_list(units_list)
         # no consistency need be enforced when using mean field.
-        return dict((u, u.mean_field_from_activation(vmap)) for u in units_list)
+        return dict((u, u.mean_field_from_activation(vmap, pmap)) for u in units_list)
     
-    def mean_field(self, units_list, vmap):
-        activations_vmap = self.activations(units_list, vmap)
-        return self.mean_field_from_activation(activations_vmap)
+    def mean_field(self, units_list, vmap, pmap):
+        activations_vmap = self.activations(units_list, vmap, pmap)
+        return self.mean_field_from_activation(activations_vmap, pmap)
         
-    def free_energy_unchanged_terms(self, units_list, vmap):
+    def free_energy_unchanged_terms(self, units_list, vmap, pmap):
         """
         The terms of the energy that don't involve any of the given units.
         These terms are unchanged when computing the free energy, where
@@ -465,42 +465,42 @@ class RBM(object):
             if not any(params.affects(u) for u in units_list):
                 # if none of the given Units instances are affected by the current Parameters instance,
                 # this term is unchanged (it's the same as in the energy function)
-                unchanged_terms.append(params.energy_term(vmap))
+                unchanged_terms.append(params.energy_term(vmap, pmap))
         
         return unchanged_terms
         
-    def free_energy_affected_terms_from_activation(self, vmap):
+    def free_energy_affected_terms_from_activation(self, vmap, pmap):
         """
         For each Units instance in the activation vmap, the corresponding free energy
         term is returned.
         """
-        return dict((u, u.free_energy_term_from_activation(vmap)) for u in vmap)
+        return dict((u, u.free_energy_term_from_activation(vmap, pmap)) for u in vmap)
 
-    def free_energy_affected_terms(self, units_list, vmap):
+    def free_energy_affected_terms(self, units_list, vmap, pmap):
         """
         The terms of the energy that involve the units given in units_list are
         of course affected when these units are integrated out. This method
         gives the 'integrated' terms.
         """
-        return dict((u, u.free_energy_term(vmap)) for u in units_list)
+        return dict((u, u.free_energy_term(vmap, pmap)) for u in units_list)
             
-    def free_energy(self, units_list, vmap):
+    def free_energy(self, units_list, vmap, pmap):
         """
         Calculates the free energy, integrating out the units given in units_list.
         This has to be a list of Units instances that are independent of eachother
         given the other units, and each of them has to have a free_energy_term.
         """
         # first, get the terms of the energy that don't involve any of the given units. These terms are unchanged.
-        unchanged_terms = self.free_energy_unchanged_terms(units_list, vmap)
+        unchanged_terms = self.free_energy_unchanged_terms(units_list, vmap, pmap)
         # all other terms are affected by the summing out of the units.        
-        affected_terms = self.free_energy_affected_terms(units_list, vmap).values()  
+        affected_terms = self.free_energy_affected_terms(units_list, vmap, pmap).values()  
         # note that this separation breaks down if there are dependencies between the Units instances given.
         return sum(unchanged_terms + affected_terms, T.constant(0, theano.config.floatX))
         
-    def activations(self, units_list, vmap):
+    def activations(self, units_list, vmap, pmap):
         units_list = self.complete_units_list(units_list)
         # no consistency need be enforced when computing activations.
-        return dict((u, u.activation(vmap)) for u in units_list)
+        return dict((u, u.activation(vmap, pmap)) for u in units_list)
 
     def __repr__(self):
         units_names = ", ".join(("'%s'" % u.name) for u in self.units_list)

@@ -14,9 +14,9 @@ class FixedBiasParameters(Parameters):
         self.variables = []
         self.u = units
         
-        self.terms[self.u] = lambda vmap: T.constant(value, theano.config.floatX) # T.constant is necessary so scan doesn't choke on it
+        self.terms[self.u] = lambda vmap, pmap: T.constant(value, theano.config.floatX) # T.constant is necessary so scan doesn't choke on it
         
-    def energy_term(self, vmap):
+    def energy_term(self, vmap, pmap):
         s = vmap[self.u]
         return self.energy_multiplier * T.sum(s, axis=range(1, s.ndim)) # NO minus sign! bias is -1 so this is canceled.
         # sum over all but the minibatch dimension.
@@ -31,23 +31,23 @@ class ProdParameters(Parameters):
         self.vu = units_list[0]
         self.hu = units_list[1]
         
-        self.terms[self.vu] = lambda vmap: T.dot(vmap[self.hu], W.T)
-        self.terms[self.hu] = lambda vmap: T.dot(vmap[self.vu], W)
+        self.terms[self.vu] = lambda vmap, pmap: T.dot(vmap[self.hu], pmap[W].T)
+        self.terms[self.hu] = lambda vmap, pmap: T.dot(vmap[self.vu], pmap[W])
         
-        self.energy_gradients[self.var] = lambda vmap: vmap[self.vu].dimshuffle(0, 1, 'x') * vmap[self.hu].dimshuffle(0, 'x', 1)
-        self.energy_gradient_sums[self.var] = lambda vmap: T.dot(vmap[self.vu].T, vmap[self.hu])
+        self.energy_gradients[self.var] = lambda vmap, pmap: vmap[self.vu].dimshuffle(0, 1, 'x') * vmap[self.hu].dimshuffle(0, 'x', 1)
+        self.energy_gradient_sums[self.var] = lambda vmap, pmap: T.dot(vmap[self.vu].T, vmap[self.hu])
 
-    def weights_for(self, units):
+    def weights_for(self, units, pmap):
         assert units in [self.vu, self.hu]
         if self.vu == units:
             # (minibatches, hiddens, visible)
-            return self.var.dimshuffle('x', 1, 0)
+            return pmap[self.var].dimshuffle('x', 1, 0)
         else:
             # (minibatches, visible, hiddens)
-            return self.var.dimshuffle('x', 0, 1)
+            return pmap[self.var].dimshuffle('x', 0, 1)
                 
-    def energy_term(self, vmap):
-        return - self.energy_multiplier * T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=1)
+    def energy_term(self, vmap, pmap):
+        return - self.energy_multiplier * T.sum(self.terms[self.hu](vmap, pmap) * vmap[self.hu], axis=1)
         # return - T.sum(T.dot(vmap[self.vu], self.var) * vmap[self.hu])
         # T.sum sums over the hiddens dimension.
         
@@ -59,22 +59,22 @@ class BiasParameters(Parameters):
         self.variables = [self.var]
         self.u = units
         
-        self.terms[self.u] = lambda vmap: self.var
+        self.terms[self.u] = lambda vmap, pmap: pmap[self.var]
         
-        self.energy_gradients[self.var] = lambda vmap: vmap[self.u]
+        self.energy_gradients[self.var] = lambda vmap, pmap: vmap[self.u]
         
-    def energy_term(self, vmap):
-        return - self.energy_multiplier * T.dot(vmap[self.u], self.var)
+    def energy_term(self, vmap, pmap):
+        return - self.energy_multiplier * T.dot(vmap[self.u], pmap[self.var])
         # bias is NOT TRANSPOSED because it's a vector, and apparently vectors are COLUMN vectors by default.
 
 
 class QuadraticBiasParameters(BiasParameters):
     def __init__(self, rbm, units, b, name=None, energy_multiplier=1):
         super(QuadraticBiasParameters, self).__init__(rbm, units, b, name, energy_multiplier)
-        self.energy_gradients[self.var] = lambda vmap: vmap[self.u] - self.var.dimshuffle('x', 0)
+        self.energy_gradients[self.var] = lambda vmap, pmap: vmap[self.u] - pmap[self.var].dimshuffle('x', 0)
         
-    def energy_term(self, vmap):
-        return self.energy_multiplier * (- T.dot(vmap[self.u], self.var) + (self.var ** 2) / 2).dimshuffle('x', 0)
+    def energy_term(self, vmap, pmap):
+        return self.energy_multiplier * (- T.dot(vmap[self.u], pmap[self.var]) + (pmap[self.var] ** 2) / 2).dimshuffle('x', 0)
         # bias is NOT TRANSPOSED because it's a vector, and apparently vectors are COLUMN vectors by default.
 
 
@@ -94,10 +94,10 @@ class AdvancedProdParameters(Parameters):
         # vd + hd = Wd dimensions.
         # the hiddens and visibles have hd+1 and vd+1 dimensions respectively, because the first dimension
         # is reserved for minibatches!
-        self.terms[self.vu] = lambda vmap: tensordot(vmap[self.hu], W, axes=(range(1,self.hd+1),range(self.vd, self.vard)))
-        self.terms[self.hu] = lambda vmap: tensordot(vmap[self.vu], W, axes=(range(1,self.vd+1),range(0, self.vd)))
+        self.terms[self.vu] = lambda vmap, pmap: tensordot(vmap[self.hu], pmap[W], axes=(range(1,self.hd+1),range(self.vd, self.vard)))
+        self.terms[self.hu] = lambda vmap, pmap: tensordot(vmap[self.vu], pmap[W], axes=(range(1,self.vd+1),range(0, self.vd)))
         
-        def gradient(vmap):
+        def gradient(vmap, pmap):
             v_indices = range(0, self.vd + 1) + (['x'] * self.hd)
             h_indices = [0] + (['x'] * self.vd) + range(1, self.hd + 1)
             v_reshaped = vmap[self.vu].dimshuffle(v_indices)
@@ -105,25 +105,25 @@ class AdvancedProdParameters(Parameters):
             return v_reshaped * h_reshaped
         
         self.energy_gradients[self.var] = gradient
-        self.energy_gradient_sums[self.var] = lambda vmap: tensordot(vmap[self.vu], vmap[self.hu], axes=([0],[0]))
+        self.energy_gradient_sums[self.var] = lambda vmap, pmap: tensordot(vmap[self.vu], vmap[self.hu], axes=([0],[0]))
         # only sums out the minibatch dimension.
                 
-    def energy_term(self, vmap):
+    def energy_term(self, vmap, pmap):
         # v_part = tensordot(vmap[self.vu], self.var, axes=(range(1, self.vd+1), range(0, self.vd)))
-        v_part = self.terms[self.hu](vmap)
+        v_part = self.terms[self.hu](vmap, pmap)
         neg_energy = tensordot(v_part, vmap[self.hu], axes=(range(1, self.hd+1), range(1, self.hd+1)))
         # we do not sum over the first dimension, which is reserved for minibatches!
         return - self.energy_multiplier * neg_energy # don't forget to flip the sign!
 
-    def weights_for(self, units):
+    def weights_for(self, units, pmap):
         assert units in [self.vu, self.hu]
         if self.vu == units:
             # (minibatches, maps, map dims, visible)
-            return self.var.dimshuffle('x', 1, 2, 3, 0)
+            return pmap[self.var].dimshuffle('x', 1, 2, 3, 0)
         else:
             # (minibatches, hidden, visible)
             raise Exception("AdvancedProdWeights.weights_for(hidden) not implemented")
-            return self.var.dimshuffle('x', 0, 'x', 'x', 1)
+            return pmap[self.var].dimshuffle('x', 0, 'x', 'x', 1)
 
 
 class AdvancedBiasParameters(Parameters):
@@ -134,12 +134,12 @@ class AdvancedBiasParameters(Parameters):
         self.u = units
         self.ud = dimensions
         
-        self.terms[self.u] = lambda vmap: self.var
+        self.terms[self.u] = lambda vmap, pmap: pmap[self.var]
         
-        self.energy_gradients[self.var] = lambda vmap: vmap[self.u]
+        self.energy_gradients[self.var] = lambda vmap, pmap: vmap[self.u]
         
-    def energy_term(self, vmap):
-        return - self.energy_multiplier * tensordot(vmap[self.u], self.var, axes=(range(1, self.ud+1), range(0, self.ud)))
+    def energy_term(self, vmap, pmap):
+        return - self.energy_multiplier * tensordot(vmap[self.u], pmap[self.var], axes=(range(1, self.ud+1), range(0, self.ud)))
         
 
 class SharedBiasParameters(Parameters):
@@ -157,19 +157,19 @@ class SharedBiasParameters(Parameters):
         
         self.terms[self.u] = lambda vmap: T.shape_padright(self.var, self.sd)
         
-        self.energy_gradients[self.var] = lambda vmap: T.mean(vmap[self.u], axis=self._shared_axes(vmap))
+        self.energy_gradients[self.var] = lambda vmap, pmap: T.mean(vmap[self.u], axis=self._shared_axes(vmap))
         
     def _shared_axes(self, vmap):
         d = vmap[self.u].ndim
         return range(d - self.sd, d)
             
-    def energy_term(self, vmap):
+    def energy_term(self, vmap, pmap):
         # b_padded = T.shape_padright(self.var, self.sd)
         # return - T.sum(tensordot(vmap[self.u], b_padded, axes=(range(1, self.ud+1), range(0, self.ud))), axis=0)
         # this does not work because tensordot cannot handle broadcastable dimensions.
         # instead, the dimensions of b_padded which are broadcastable should be summed out afterwards.
         # this comes down to the same thing. so:
-        t = tensordot(vmap[self.u], self.var, axes=(range(1, self.nd+1), range(0, self.nd)))
+        t = tensordot(vmap[self.u], pmap[self.var], axes=(range(1, self.nd+1), range(0, self.nd)))
         # now sum t over its trailing shared dimensions, which mimics broadcast + tensordot behaviour.
         axes = range(t.ndim - self.sd, t.ndim)
         return - self.energy_multiplier * T.sum(t, axis=axes)
@@ -179,16 +179,16 @@ class SharedQuadraticBiasParameters(SharedBiasParameters):
     def __init__(self, rbm, units, dimensions, shared_dimensions, b, name=None, energy_multiplier=1):
         super(SharedQuadraticBiasParameters, self).__init__(rbm, units, dimensions, shared_dimensions, b, name, energy_multiplier)
 
-        self.terms[self.u] = lambda vmap: T.shape_padright(self.var, self.sd)
-        self.energy_gradients[self.var] = lambda vmap: T.mean(vmap[self.u], axis=self._shared_axes(vmap)) - self.var.dimshuffle('x', 0)
+        self.terms[self.u] = lambda vmap, pmap: T.shape_padright(pmap[self.var], self.sd)
+        self.energy_gradients[self.var] = lambda vmap, pmap: T.mean(vmap[self.u], axis=self._shared_axes(vmap)) - pmap[self.var].dimshuffle('x', 0)
             
-    def energy_term(self, vmap):
+    def energy_term(self, vmap, pmap):
         # b_padded = T.shape_padright(self.var, self.sd)
         # return - T.sum(tensordot(vmap[self.u], b_padded, axes=(range(1, self.ud+1), range(0, self.ud))), axis=0)
         # this does not work because tensordot cannot handle broadcastable dimensions.
         # instead, the dimensions of b_padded which are broadcastable should be summed out afterwards.
         # this comes down to the same thing. so:
-        t = tensordot(vmap[self.u], self.var, axes=(range(1, self.nd+1), range(0, self.nd)))
+        t = tensordot(vmap[self.u], pmap[self.var], axes=(range(1, self.nd+1), range(0, self.nd)))
         # now sum t over its trailing shared dimensions, which mimics broadcast + tensordot behaviour.
         axes = range(t.ndim - self.sd, t.ndim)
         number_of_shared_units = 1
@@ -196,7 +196,7 @@ class SharedQuadraticBiasParameters(SharedBiasParameters):
         for a in self._shared_axes(vmap):
           number_of_shared_units *= u_shape[a]
         number_of_shared_units = T.cast(number_of_shared_units, dtype=theano.config.floatX)
-        return self.energy_multiplier * (- T.sum(t, axis=axes) + T.sum(number_of_shared_units * (self.var * self.var) / 2.0))
+        return self.energy_multiplier * (- T.sum(t, axis=axes) + T.sum(number_of_shared_units * (pmap[self.var] * pmap[self.var]) / 2.0))
 
                
 class SharedProdParameters(Parameters):
@@ -222,32 +222,32 @@ class SharedProdParameters(Parameters):
         def to_hu(m):
           return T.shape_padright(m, self.hsd)
         
-        self.terms[self.vu] = lambda vmap: tensordot(from_hu(vmap[self.hu], vmap), W, \
-                                                     ( range(1, self.hnd+1), range(1, self.hnd+1) ))
+        self.terms[self.vu] = lambda vmap, pmap: tensordot(from_hu(vmap[self.hu], vmap), pmap[W], \
+                                                           ( range(1, self.hnd+1), range(1, self.hnd+1) ))
         #                                  T.dot(from_hu(vmap[self.hu], vmap), W.T)
-        self.terms[self.hu] = lambda vmap: to_hu(tensordot(vmap[self.vu], W, ( (1,), (0,) )))
+        self.terms[self.hu] = lambda vmap, pmap: to_hu(tensordot(vmap[self.vu], pmap[W], ( (1,), (0,) )))
         #                                  to_hu(T.dot(vmap[self.vu], W))
         
-        self.energy_gradients[self.var] = lambda vmap: vmap[self.vu].dimshuffle([0,1] + ['x'] * self.hnd) * from_hu(vmap[self.hu], vmap).dimshuffle([0,'x'] + range(1, self.hnd+1))
+        self.energy_gradients[self.var] = lambda vmap, pmap: vmap[self.vu].dimshuffle([0,1] + ['x'] * self.hnd) * from_hu(vmap[self.hu], vmap).dimshuffle([0,'x'] + range(1, self.hnd+1))
         if self.hnd == 1:
-            self.energy_gradient_sums[self.var] = lambda vmap: T.dot(vmap[self.vu].T, from_hu(vmap[self.hu], vmap))
+            self.energy_gradient_sums[self.var] = lambda vmap, pmap: T.dot(vmap[self.vu].T, from_hu(vmap[self.hu], vmap))
         
     def _shared_axes(self, vmap):
         d = vmap[self.hu].ndim
         return range(d - self.hsd, d)
 
-    def weights_for(self, units):
+    def weights_for(self, units, pmap):
         assert units in [self.vu, self.hu]
         if self.vu == units:
             # (minibatches, maps, map dims, visible)
             d = ['x'] + range(1, self.hnd+1) + ['x'] * self.hsd + [0]
-            return self.var.dimshuffle(d)
+            return pmap[self.var].dimshuffle(d)
         else:
             # (minibatches, hidden, visible)
             raise Exception("SharedProdWeights.weights_for(hidden) not implemented")
-            return self.var.dimshuffle('x', 0, 'x', 'x', 1)
+            return pmap[self.var].dimshuffle('x', 0, 'x', 'x', 1)
                 
-    def energy_term(self, vmap):
+    def energy_term(self, vmap, pmap):
         return - self.energy_multiplier * T.sum(vmap[self.vu] * self.terms[self.vu](vmap), axis=1)
         
     
@@ -268,9 +268,9 @@ class Convolutional2DParameters(Parameters):
         # conv input is (mb_size, input_maps, input height [numrows], input width [numcolumns])
         # conv output is (mb_size, output_maps, output height [numrows], output width [numcolumns])
         
-        def term_vu(vmap):
+        def term_vu(vmap, pmap):
             # input = hiddens, output = visibles so we need to swap dimensions
-            W_shuffled = self.var.dimshuffle(1, 0, 2, 3)
+            W_shuffled = pmap[self.var].dimshuffle(1, 0, 2, 3)
             if self.filter_shape is not None:
                 shuffled_filter_shape = [self.filter_shape[k] for k in (1, 0, 2, 3)]
             else:
@@ -279,20 +279,20 @@ class Convolutional2DParameters(Parameters):
             return conv.conv2d(vmap[self.hu], W_shuffled, border_mode='full', \
                                image_shape=self.hidden_shape, filter_shape=shuffled_filter_shape)
             
-        def term_hu(vmap):
+        def term_hu(vmap, pmap):
             # input = visibles, output = hiddens, flip filters
             # (flip because conv2d flips the kernel a second time)
-            W_flipped = self.var[:, :, ::-1, ::-1]
+            W_flipped = pmap[self.var][:, :, ::-1, ::-1]
             return conv.conv2d(vmap[self.vu], W_flipped, border_mode='valid', \
                                image_shape=self.visible_shape, filter_shape=self.filter_shape)
         
         self.terms[self.vu] = term_vu
         self.terms[self.hu] = term_hu
         
-        def gradient(vmap):
+        def gradient(vmap, pmap):
             raise NotImplementedError # TODO
         
-        def gradient_sum(vmap):
+        def gradient_sum(vmap, pmap):
             if self.visible_shape is not None:
                 i_shape = [self.visible_shape[k] for k in [1, 0, 2, 3]]
             else:
@@ -351,8 +351,8 @@ class Convolutional2DParameters(Parameters):
         else:
             return None
         
-    def energy_term(self, vmap):
-        return - self.energy_multiplier * T.sum(self.terms[self.hu](vmap) * vmap[self.hu], axis=[1,2,3])
+    def energy_term(self, vmap, pmap):
+        return - self.energy_multiplier * T.sum(self.terms[self.hu](vmap, pmap) * vmap[self.hu], axis=[1,2,3])
         # sum over all but the minibatch axis
         
         
@@ -373,32 +373,32 @@ class ThirdOrderParameters(Parameters):
         self.u1 = units_list[1]
         self.u2 = units_list[2]
         
-        def term_u0(vmap):
-            p = tensordot(vmap[self.u1], W, axes=([1],[1])) # (mb, u0, u2)
+        def term_u0(vmap, pmap):
+            p = tensordot(vmap[self.u1], pmap[W], axes=([1],[1])) # (mb, u0, u2)
             return T.sum(p * vmap[self.u2].dimshuffle(0, 'x', 1), axis=2) # (mb, u0)
             # cannot use two tensordots here because of the minibatch dimension.
             
-        def term_u1(vmap):
-            p = tensordot(vmap[self.u0], W, axes=([1],[0])) # (mb, u1, u2)
+        def term_u1(vmap, pmap):
+            p = tensordot(vmap[self.u0], pmap[W], axes=([1],[0])) # (mb, u1, u2)
             return T.sum(p * vmap[self.u2].dimshuffle(0, 'x', 1), axis=2) # (mb, u1)
             
-        def term_u2(vmap):
-            p = tensordot(vmap[self.u0], W, axes=([1],[0])) # (mb, u1, u2)
+        def term_u2(vmap, pmap):
+            p = tensordot(vmap[self.u0], pmap[W], axes=([1],[0])) # (mb, u1, u2)
             return T.sum(p * vmap[self.u1].dimshuffle(0, 1, 'x'), axis=1) # (mb, u2)
             
         self.terms[self.u0] = term_u0
         self.terms[self.u1] = term_u1
         self.terms[self.u2] = term_u2
                 
-        def gradient(vmap):
+        def gradient(vmap, pmap):
             p = vmap[self.u0].dimshuffle(0, 1, 'x') * vmap[self.u1].dimshuffle(0, 'x', 1) # (mb, u0, u1)
             p2 = p.dimshuffle(0, 1, 2, 'x') * vmap[self.u2].dimshuffle(0, 'x', 'x', 1) # (mb, u0, u1, u2)
             return p2
             
         self.energy_gradients[self.var] = gradient
         
-    def energy_term(self, vmap):
-        return - self.energy_multiplier * T.sum(self.terms[self.u1](vmap) * vmap[self.u1], axis=1)
+    def energy_term(self, vmap, pmap):
+        return - self.energy_multiplier * T.sum(self.terms[self.u1](vmap, pmap) * vmap[self.u1], axis=1)
         # sum is over the u1 dimension, not the minibatch dimension!
 
 
@@ -420,19 +420,19 @@ class ThirdOrderFactoredParameters(Parameters):
         self.u0 = units_list[0]
         self.u1 = units_list[1]
         self.u2 = units_list[2]
-        self.prod0 = lambda vmap: T.dot(vmap[self.u0], self.var0) # (mb, f)
-        self.prod1 = lambda vmap: T.dot(vmap[self.u1], self.var1) # (mb, f)
-        self.prod2 = lambda vmap: T.dot(vmap[self.u2], self.var2) # (mb, f)
-        self.terms[self.u0] = lambda vmap: T.dot(self.prod1(vmap) * self.prod2(vmap), self.var0.T) # (mb, u0)
-        self.terms[self.u1] = lambda vmap: T.dot(self.prod0(vmap) * self.prod2(vmap), self.var1.T) # (mb, u1)
-        self.terms[self.u2] = lambda vmap: T.dot(self.prod0(vmap) * self.prod1(vmap), self.var2.T) # (mb, u2)
+        self.prod0 = lambda vmap, pmap: T.dot(vmap[self.u0], self.var0) # (mb, f)
+        self.prod1 = lambda vmap, pmap: T.dot(vmap[self.u1], self.var1) # (mb, f)
+        self.prod2 = lambda vmap, pmap: T.dot(vmap[self.u2], self.var2) # (mb, f)
+        self.terms[self.u0] = lambda vmap, pmap: T.dot(self.prod1(vmap, pmap) * self.prod2(vmap, pmap), pmap[self.var0].T) # (mb, u0)
+        self.terms[self.u1] = lambda vmap, pmap: T.dot(self.prod0(vmap, pmap) * self.prod2(vmap, pmap), pmap[self.var1].T) # (mb, u1)
+        self.terms[self.u2] = lambda vmap, pmap: T.dot(self.prod0(vmap, pmap) * self.prod1(vmap, pmap), pmap[self.var2].T) # (mb, u2)
         
         # if the same parameter variable is used multiple times, the energy gradients should be added.
         # so we need a little bit of trickery here to make this work.
         energy_gradient_sums_list = [
-            lambda vmap: T.dot(vmap[self.u0].T, self.prod1(vmap) * self.prod2(vmap)), # (u0, f)
-            lambda vmap: T.dot(vmap[self.u1].T, self.prod0(vmap) * self.prod2(vmap)), # (u1, f)
-            lambda vmap: T.dot(vmap[self.u2].T, self.prod0(vmap) * self.prod1(vmap)), # (u2, f)
+            lambda vmap, pmap: T.dot(vmap[self.u0].T, self.prod1(vmap, pmap) * self.prod2(vmap, pmap)), # (u0, f)
+            lambda vmap, pmap: T.dot(vmap[self.u1].T, self.prod0(vmap, pmap) * self.prod2(vmap, pmap)), # (u1, f)
+            lambda vmap, pmap: T.dot(vmap[self.u2].T, self.prod0(vmap, pmap) * self.prod1(vmap, pmap)), # (u2, f)
         ] # the T.dot also sums out the minibatch dimension
         
         energy_gradient_sums_dict = {}
@@ -446,13 +446,13 @@ class ThirdOrderFactoredParameters(Parameters):
                 # refer to the one of the last iteration!
                 # TODO: this is nasty, is there a cleaner way?
                 g = grad_list
-                self.energy_gradient_sums[var] = lambda vmap: sum(f(vmap) for f in g)
+                self.energy_gradient_sums[var] = lambda vmap, pmap: sum(f(vmap, pmap) for f in g)
             tmp()
             
         # TODO: do the same for the gradient without summing!
     
-    def energy_term(self, vmap):
-        return - self.energy_multiplier * T.sum(self.terms[self.u1](vmap) * vmap[self.u1], axis=1)
+    def energy_term(self, vmap, pmap):
+        return - self.energy_multiplier * T.sum(self.terms[self.u1](vmap, pmap) * vmap[self.u1], axis=1)
         # sum is over the u1 dimension, not the minibatch dimension!
         
 

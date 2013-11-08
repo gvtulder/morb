@@ -5,29 +5,29 @@ import numpy as np
 
 
 class BinaryUnits(Units):
-    def success_probability_from_activation(self, vmap):
+    def success_probability_from_activation(self, vmap, pmap):
         return activation_functions.sigmoid(vmap[self])
         
-    def success_probability(self, vmap):
-        return self.success_probability_from_activation({ self: self.activation(vmap) })
+    def success_probability(self, vmap, pmap):
+        return self.success_probability_from_activation({ self: self.activation(vmap, pmap) }, pmap)
 
-    def sample_from_activation(self, vmap):
-        p = self.success_probability_from_activation(vmap)
+    def sample_from_activation(self, vmap, pmap):
+        p = self.success_probability_from_activation(vmap, pmap)
         return samplers.bernoulli(p)
         
-    def mean_field_from_activation(self, vmap):
+    def mean_field_from_activation(self, vmap, pmap):
         return activation_functions.sigmoid(vmap[self])
 
-    def free_energy_term_from_activation(self, vmap):
+    def free_energy_term_from_activation(self, vmap, pmap):
         # softplus of unit activations, summed over # units
         s = - T.nnet.softplus(vmap[self])
         # sum over all but the minibatch dimension
         return T.sum(s, axis=range(1, s.ndim))
         
-    def log_prob_from_activation(self, vmap, activation_vmap):
+    def log_prob_from_activation(self, vmap, activation_vmap, pmap):
         # the log probability mass function is actually the  negative of the
         # cross entropy between the unit values and the activations
-        p = self.success_probability_from_activation(activation_vmap)
+        p = self.success_probability_from_activation(activation_vmap, pmap)
         return vmap[self] * T.log(p) + (1 - vmap[self]) * T.log(1 - p)
   
 class GaussianPrecisionProxyUnits(ProxyUnits):
@@ -42,20 +42,20 @@ class GaussianUnits(Units):
         self.precision_units = GaussianPrecisionProxyUnits(rbm, self, name=proxy_name)
         self.proxy_units = [self.precision_units]
         
-    def mean_from_activation(self, vmap): # mean is the parameter
+    def mean_from_activation(self, vmap, pmap): # mean is the parameter
         return vmap[self]
         
-    def mean(self, vmap):
-        return self.mean_from_activation({ self: self.activation(vmap) })
+    def mean(self, vmap, pmap):
+        return self.mean_from_activation({ self: self.activation(vmap, pmap) }, pmap)
 
-    def sample_from_activation(self, vmap):
-        mu = self.mean_from_activation(vmap)
+    def sample_from_activation(self, vmap, pmap):
+        mu = self.mean_from_activation(vmap, pmap)
         return samplers.gaussian(mu)
         
-    def mean_field_from_activation(self, vmap):
+    def mean_field_from_activation(self, vmap, pmap):
         return vmap[self]
 
-    def log_prob_from_activation(self, vmap, activation_vmap):
+    def log_prob_from_activation(self, vmap, activation_vmap, pmap):
         return - np.log(np.sqrt(2*np.pi)) - ((vmap[self] - activation_vmap[self])**2 / 2.0)
 
 
@@ -72,49 +72,49 @@ class LearntPrecisionGaussianUnits(Units):
         self.precision_units = LearntPrecisionGaussianProxyUnits(rbm, self, name=proxy_name)
         self.proxy_units = [self.precision_units]
         
-    def mean_from_activation(self, vmap):
-        return vmap[self] / self.precision_from_activation(vmap)
+    def mean_from_activation(self, vmap, pmap):
+        return vmap[self] / self.precision_from_activation(vmap, pmap)
     
-    def mean(self, vmap):
-        a1 = self.activation(vmap)
-        a2 = self.precision_units.activation(vmap)
-        return self.mean_from_activation({ self: a1, self.precision_units: a2 })
+    def mean(self, vmap, pmap):
+        a1 = self.activation(vmap, pmap)
+        a2 = self.precision_units.activation(vmap, pmap)
+        return self.mean_from_activation({ self: a1, self.precision_units: a2 }, pmap)
     
-    def variance_from_activation(self, vmap):
-        return 1 / self.precision_from_activation(vmap)
+    def variance_from_activation(self, vmap, pmap):
+        return 1 / self.precision_from_activation(vmap, pmap)
     
-    def variance(self, vmap):
-        a1 = self.activation(vmap)
-        a2 = self.precision_units.activation(vmap)
-        return self.variance_from_activation({ self: a1, self.precision_units: a2 })
+    def variance(self, vmap, pmap):
+        a1 = self.activation(vmap, pmap)
+        a2 = self.precision_units.activation(vmap, pmap)
+        return self.variance_from_activation({ self: a1, self.precision_units: a2 }, pmap)
     
-    def precision_from_activation(self, vmap):
+    def precision_from_activation(self, vmap, pmap):
         return -2 * vmap[self.precision_units]
     
-    def precision(self, vmap):
-        a1 = self.activation(vmap)
-        a2 = self.precision_units.activation(vmap)
-        return self.precision_from_activation({ self: a1, self.precision_units: a2 })
+    def precision(self, vmap, pmap):
+        a1 = self.activation(vmap, pmap)
+        a2 = self.precision_units.activation(vmap, pmap)
+        return self.precision_from_activation({ self: a1, self.precision_units: a2 }, pmap)
         
-    def sample_from_activation(self, vmap):
-        mu = self.mean_from_activation(vmap)
-        sigma2 = self.variance_from_activation(vmap)
+    def sample_from_activation(self, vmap, pmap):
+        mu = self.mean_from_activation(vmap, pmap)
+        sigma2 = self.variance_from_activation(vmap, pmap)
         return samplers.gaussian(mu, sigma2)
         
-    def sample(self, vmap):
-        a1 = self.activation(vmap)
-        a2 = self.precision_units.activation(vmap)
-        return self.sample_from_activation({ self: a1, self.precision_units: a2 })
+    def sample(self, vmap, pmap):
+        a1 = self.activation(vmap, pmap)
+        a2 = self.precision_units.activation(vmap, pmap)
+        return self.sample_from_activation({ self: a1, self.precision_units: a2 }, pmap)
     
-    def log_prob(self, vmap):
-        a1 = self.activation(vmap)
-        a2 = self.precision_units.activation(vmap)
+    def log_prob(self, vmap, pmap):
+        a1 = self.activation(vmap, pmap)
+        a2 = self.precision_units.activation(vmap, pmap)
         activation_vmap = { self: a1, self.precision_units: a2 }
-        return self.log_prob_from_activation(vmap, activation_vmap)
+        return self.log_prob_from_activation(vmap, activation_vmap, pmap)
         
-    def log_prob_from_activation(self, vmap, activation_vmap):
-        var = self.variance_from_activation(activation_vmap)
-        mean = self.mean_from_activation(activation_vmap)
+    def log_prob_from_activation(self, vmap, activation_vmap, pmap):
+        var = self.variance_from_activation(activation_vmap, pmap)
+        mean = self.mean_from_activation(activation_vmap, pmap)
         return - np.log(np.sqrt(2 * np.pi * var)) - ((vmap[self] - mean)**2 / (2.0 * var))
         
         
@@ -125,73 +125,73 @@ class SoftmaxUnits(Units):
     # 0 = minibatches
     # 1 = units
     # 2 = states
-    def probabilities_from_activation(self, vmap):
+    def probabilities_from_activation(self, vmap, pmap):
         return activation_functions.softmax(vmap[self])
     
-    def probabilities(self, vmap):
-        return self.probabilities_from_activation({ self: self.activation(vmap) })
+    def probabilities(self, vmap, pmap):
+        return self.probabilities_from_activation({ self: self.activation(vmap, pmap) }, pmap)
     
-    def sample_from_activation(self, vmap):
-        p = self.probabilities_from_activation(vmap)
+    def sample_from_activation(self, vmap, pmap):
+        p = self.probabilities_from_activation(vmap, pmap)
         return samplers.multinomial(p)
         
-    def mean_field_from_activation(self, vmap):
-        return self.probabilities_from_activation(vmap)
+    def mean_field_from_activation(self, vmap, pmap):
+        return self.probabilities_from_activation(vmap, pmap)
 
 
 class SoftmaxWithZeroUnits(Units):
     """
     Like SoftmaxUnits, but in this case a zero state is possible, yielding N+1 possible states in total.
     """
-    def probabilities_from_activation(self, vmap):
+    def probabilities_from_activation(self, vmap, pmap):
         return activation_functions.softmax_with_zero(vmap[self])
         
-    def probabilities(self, vmap):
-        return self.probabilities_from_activation({ self: self.activation(vmap) })
+    def probabilities(self, vmap, pmap):
+        return self.probabilities_from_activation({ self: self.activation(vmap, pmap) }, pmap)
     
-    def sample_from_activation(self, vmap):
-        p0 = self.probabilities_from_activation(vmap)
+    def sample_from_activation(self, vmap, pmap):
+        p0 = self.probabilities_from_activation(vmap, pmap)
         s0 = samplers.multinomial(p0)
         s = s0[:, :, :-1] # chop off the last state (zero state)
         return s
 
 
 class TruncatedExponentialUnits(Units):
-    def rate_from_activation(self, vmap): # lambda
+    def rate_from_activation(self, vmap, pmap): # lambda
         return -vmap[self] # lambda = -activation!
         
-    def rate(self, vmap):
-        return self.rate_from_activation({ self: self.activation(vmap) })
+    def rate(self, vmap, pmap):
+        return self.rate_from_activation({ self: self.activation(vmap, pmap) }, pmap)
 
-    def sample_from_activation(self, vmap):
-        rate = self.rate_from_activation(vmap)
+    def sample_from_activation(self, vmap, pmap):
+        rate = self.rate_from_activation(vmap, pmap)
         return samplers.truncated_exponential(rate)
         
-    def mean_field_from_activation(self, vmap):
-        rate = self.rate_from_activation(vmap)
+    def mean_field_from_activation(self, vmap, pmap):
+        rate = self.rate_from_activation(vmap, pmap)
         return samplers.truncated_exponential_mean(rate)
         
-    def log_prob_from_activation(self, vmap, activation_vmap):
-        rate = self.rate_from_activation(activation_vmap)
+    def log_prob_from_activation(self, vmap, activation_vmap, pmap):
+        rate = self.rate_from_activation(activation_vmap, pmap)
         return T.log(rate) - rate * vmap[self] - T.log(1 - T.exp(-rate))
 
 
 class ExponentialUnits(Units):
-    def rate_from_activation(self, vmap): # lambda
+    def rate_from_activation(self, vmap, pmap): # lambda
         return -vmap[self] # lambda = -activation!
         
-    def rate(self, vmap):
-        return self.rate_from_activation({ self: self.activation(vmap) })
+    def rate(self, vmap, pmap):
+        return self.rate_from_activation({ self: self.activation(vmap, pmap) }, pmap)
 
-    def sample_from_activation(self, vmap):
-        rate = self.rate_from_activation(vmap)
+    def sample_from_activation(self, vmap, pmap):
+        rate = self.rate_from_activation(vmap, pmap)
         return samplers.exponential(rate) # lambda = -activation!
         
-    def mean_field_from_activation(self, vmap):
-        return 1.0 / self.rate_from_activation(vmap)
+    def mean_field_from_activation(self, vmap, pmap):
+        return 1.0 / self.rate_from_activation(vmap, pmap)
         
-    def log_prob_from_activation(self, vmap, activation_vmap):
-        rate = self.rate_from_activation(activation_vmap)
+    def log_prob_from_activation(self, vmap, activation_vmap, pmap):
+        rate = self.rate_from_activation(activation_vmap, pmap)
         return T.log(rate) - rate * vmap[self]
         
         
@@ -208,11 +208,11 @@ class NRELUnits(Units):
     
     See: http://metaoptimize.com/qa/questions/8524/energy-function-of-an-rbm-with-noisy-rectified-linear-units-nrelus
     """
-    def sample_from_activation(self, vmap):
+    def sample_from_activation(self, vmap, pmap):
         s = vmap[self] + samplers.gaussian(0, T.nnet.sigmoid(vmap[self])) # approximation: linear + gaussian noise
         return T.max(0, s) # rectify
         
-    def mean_field_from_activation(self, vmap):
+    def mean_field_from_activation(self, vmap, pmap):
         return T.max(0, vmap[self])
     
         
@@ -239,43 +239,42 @@ class GammaUnits(Units):
         self.log_units = GammaLogProxyUnits(rbm, self, name=proxy_name)
         self.proxy_units = [self.log_units]
 
-    def sample_from_activation(self, vmap):
+    def sample_from_activation(self, vmap, pmap):
         a1 = vmap[self]
         a2 = vmap[self.log_units]
         return samplers.gamma_approx(a2 + 1, -1 / a1)
         
-    def sample(self, vmap):
-        a1 = self.activation(vmap)
-        a2 = self.log_units.activation(vmap)
-        return self.sample_from_activation({ self: a1, self.log_units: a2 })
+    def sample(self, vmap, pmap):
+        a1 = self.activation(vmap, pmap)
+        a2 = self.log_units.activation(vmap, pmap)
+        return self.sample_from_activation({ self: a1, self.log_units: a2 }, pmap)
 
-    def k_from_activation(self, vmap):
+    def k_from_activation(self, vmap, pmap):
         a2 = vmap[self.log_units]
         return a2 + 1
 
-    def k(self, vmap):
-        a1 = self.activation(vmap
-)
-        a2 = self.log_units.activation(vmap)
-        return self.k_from_activation({ self: a1, self.log_units: a2 })        
+    def k(self, vmap, pmap):
+        a1 = self.activation(vmap, pmap)
+        a2 = self.log_units.activation(vmap, pmap)
+        return self.k_from_activation({ self: a1, self.log_units: a2 }, pmap)
 
-    def theta_from_activation(self, vmap):
+    def theta_from_activation(self, vmap, pmap):
         a1 = vmap[self]
         return -1.0 / a1
 
-    def theta(self, vmap):
-        a1 = self.activation(vmap)
-        a2 = self.log_units.activation(vmap)
-        return self.theta_from_activation({ self: a1, self.log_units: a2 })     
+    def theta(self, vmap, pmap):
+        a1 = self.activation(vmap, pmap)
+        a2 = self.log_units.activation(vmap, pmap)
+        return self.theta_from_activation({ self: a1, self.log_units: a2 }, pmap)
 
-    def mean_from_activation(self, vmap):
-        k = self.k_from_activation(vmap)
-        theta = self.theta_from_activation(vmap)
+    def mean_from_activation(self, vmap, pmap):
+        k = self.k_from_activation(vmap, pmap)
+        theta = self.theta_from_activation(vmap, pmap)
         return k * theta
 
-    def mean(self, vmap):
-        a1 = self.activation(vmap)
-        a2 = self.log_units.activation(vmap)
+    def mean(self, vmap, pmap):
+        a1 = self.activation(vmap, pmap)
+        a2 = self.log_units.activation(vmap, pmap)
         return self.mean_from_activation({ self: a1, self.log_units: a2 })     
 
 
@@ -301,14 +300,14 @@ class SymmetricBinaryUnits(Units):
         self.flipped_units = SymmetricBinaryProxyUnits(rbm, self, name=proxy_name)
         self.proxy_units = [self.flipped_units]
         
-    def sample_from_activation(self, vmap):
+    def sample_from_activation(self, vmap, pmap):
         p = activation_functions.sigmoid(vmap[self] - vmap[self.flipped_units])
         return samplers.bernoulli(p)
         
-    def mean_field_from_activation(self, vmap):
+    def mean_field_from_activation(self, vmap, pmap):
         return activation_functions.sigmoid(vmap[self] - vmap[self.flipped_units])
 
-    def free_energy_term_from_activation(self, vmap):
+    def free_energy_term_from_activation(self, vmap, pmap):
         # softplus of unit activations, summed over # units
         s = - T.nnet.softplus(vmap[self] - vmap[self.flipped_units])
         # sum over all but the minibatch dimension
