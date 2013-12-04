@@ -155,7 +155,7 @@ class SharedBiasParameters(Parameters):
         self.sd = shared_dimensions
         self.nd = self.ud - self.sd
         
-        self.terms[self.u] = lambda vmap: T.shape_padright(self.var, self.sd)
+        self.terms[self.u] = lambda vmap, pmap: T.shape_padright(pmap[self.var], self.sd)
         
         self.energy_gradients[self.var] = lambda vmap, pmap: T.mean(vmap[self.u], axis=self._shared_axes(vmap))
         
