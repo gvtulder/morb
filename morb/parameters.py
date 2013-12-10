@@ -146,7 +146,7 @@ class SharedBiasParameters(Parameters):
     """
     like AdvancedBiasParameters, but a given number of trailing dimensions are 'shared'.
     """
-    def __init__(self, rbm, units, dimensions, shared_dimensions, b, name=None, energy_multiplier=1):
+    def __init__(self, rbm, units, dimensions, shared_dimensions, b, name=None, energy_multiplier=1, divide_by_number_of_nodes=False):
         super(SharedBiasParameters, self).__init__(rbm, [units], name=name, energy_multiplier = energy_multiplier)
         self.var = b
         self.variables = [self.var]
@@ -157,7 +157,11 @@ class SharedBiasParameters(Parameters):
         
         self.terms[self.u] = lambda vmap, pmap: T.shape_padright(pmap[self.var], self.sd)
         
-        self.energy_gradients[self.var] = lambda vmap, pmap: T.mean(vmap[self.u], axis=self._shared_axes(vmap))
+        if divide_by_number_of_nodes:
+          self.energy_gradients[self.var] = lambda vmap, pmap: T.mean(vmap[self.u], axis=self._shared_axes(vmap))
+        else:
+          print "SharedBiasParameters: divide_by_number_of_nodes==False"
+          self.energy_gradients[self.var] = lambda vmap, pmap: T.sum(vmap[self.u], axis=self._shared_axes(vmap))
         
     def _shared_axes(self, vmap):
         d = vmap[self.u].ndim
