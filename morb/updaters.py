@@ -128,14 +128,14 @@ class GradientUpdater(Updater):
     This can be used to train/finetune a model supervisedly or as an auto-
     encoder, for example.
     """
-    def __init__(self, objective, variable, theano_updates={}):
+    def __init__(self, objective, variable, pmap, theano_updates={}):
         """
         the theano_updates argument can be used to pass in updates if the objective
         contains a scan op or something.
         """
         super(GradientUpdater, self).__init__(variable)
         try:
-            self.update = T.grad(objective, variable)
+            self.update = T.grad(objective, pmap[variable])
         except theano.gradient.DisconnectedInputError:
             print "DisconnectedInputError: %s" % str(variable)
             self.update = 0

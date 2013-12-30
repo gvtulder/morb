@@ -184,7 +184,7 @@ def cross_entropy(units_list, vmap_targets, vmap_predictions):
     return sum((- t[u] * T.log(p[u]) - (1 - t[u]) * T.log(1 - p[u])) for u in units_list)
 
 
-def discriminative_learning_objective(rbm, visible_units, hidden_units, label_units, vmap):
+def discriminative_learning_objective(rbm, visible_units, hidden_units, label_units, vmap, pmap):
   """
   Discriminative training objective: negative log p(y | v).
   
@@ -206,13 +206,13 @@ def discriminative_learning_objective(rbm, visible_units, hidden_units, label_un
       assert isinstance(by[0], parameters.BiasParameters)
           
       # (minibatches, labels)
-      by_weights_for_v = T.shape_padleft(by[0].var, 1)
+      by_weights_for_v = T.shape_padleft(pmap[by[0].var], 1)
 
       # collect all components
       label_activation = by_weights_for_v
 
       for h in hidden_units:
-          h_act_given_v = h.activation(vmap, skip_units=label_units)
+          h_act_given_v = h.activation(vmap, pmap, skip_units=label_units)
           
           # weights U connecting labels to hidden
           U = [ param for param in all_params_y if param.affects(h) ]
@@ -221,7 +221,7 @@ def discriminative_learning_objective(rbm, visible_units, hidden_units, label_un
           assert U[0].weights_for
           
           # sum over hiddens
-          a = T.nnet.softplus(U[0].weights_for(y) + T.shape_padright(h_act_given_v, 1))
+          a = T.nnet.softplus(U[0].weights_for(y, pmap) + T.shape_padright(h_act_given_v, 1))
           # sum over hiddens
           a = T.sum(a, axis=range(1,a.ndim - 1))
           # result: (minibatches, labels)

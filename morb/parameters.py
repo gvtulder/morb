@@ -4,8 +4,8 @@ import theano
 import theano.tensor as T
 from theano.tensor.nnet import conv
 
-# from morb.misc import tensordot # better tensordot implementation that can be GPU accelerated
-tensordot = T.tensordot # use theano implementation
+from morb.misc import tensordot # better tensordot implementation that can be GPU accelerated
+# tensordot = T.tensordot # use theano implementation
 
 class FixedBiasParameters(Parameters):
     # Bias fixed at -1, which is useful for some energy functions (like Gaussian with fixed variance, Beta)
@@ -252,7 +252,7 @@ class SharedProdParameters(Parameters):
             return pmap[self.var].dimshuffle('x', 0, 'x', 'x', 1)
                 
     def energy_term(self, vmap, pmap):
-        return - self.energy_multiplier * T.sum(vmap[self.vu] * self.terms[self.vu](vmap), axis=1)
+        return - self.energy_multiplier * T.sum(vmap[self.vu] * self.terms[self.vu](vmap, pmap), axis=1)
         
     
 class Convolutional2DParameters(Parameters):
