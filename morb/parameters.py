@@ -119,7 +119,8 @@ class AdvancedProdParameters(Parameters):
         assert units in [self.vu, self.hu]
         if self.vu == units:
             # (minibatches, maps, map dims, visible)
-            return pmap[self.var].dimshuffle('x', 1, 2, 3, 0)
+            print (['x'] + range(self.vd, self.hd+self.vd) + range(0, self.vd))
+            return pmap[self.var].dimshuffle(['x'] + range(self.vd, self.hd+self.vd) + range(0, self.vd))
         else:
             # (minibatches, hidden, visible)
             raise Exception("AdvancedProdWeights.weights_for(hidden) not implemented")
