@@ -17,7 +17,11 @@ def bernoulli(a):
 def gaussian(a, var=1.0):
     # a is the mean, var is the variance (not std or precision!)
     std = T.sqrt(var)
-    return theano_rng.normal(size=a.shape, avg=a, std=std, dtype=theano.config.floatX)
+    if isinstance(a, float) or isinstance(a, int):
+      a_shape = (1,)
+    else:
+      a_shape = a.shape
+    return theano_rng.normal(size=a_shape, avg=a, std=std, dtype=theano.config.floatX)
 
         
 
