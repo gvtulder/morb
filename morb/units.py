@@ -210,10 +210,10 @@ class NRELUnits(Units):
     """
     def sample_from_activation(self, vmap, pmap):
         s = vmap[self] + samplers.gaussian(0, T.nnet.sigmoid(vmap[self])) # approximation: linear + gaussian noise
-        return T.max(0, s) # rectify
+        return T.largest(0, s) # rectify
         
     def mean_field_from_activation(self, vmap, pmap):
-        return T.max(0, vmap[self])
+        return T.largest(0, vmap[self])
     
         
         
