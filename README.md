@@ -1,3 +1,29 @@
+This is a modified version of Morb. This version provides
+
+ * support for classification RBMs (Larochelle et al., JMLR 2012);
+ * persistent contrastive divergence (PCD) with fast weights;
+ * a number of small changes and fixes.
+
+This is part of the code used for the convolutional classification RBMs in
+
+> Learning Features for Tissue Classification with the Classification
+> Restricted Boltzmann Machine <br>
+> by Gijs van Tulder and Marleen de Bruijne <br>
+> in Medical Computer Vision: Algorithms for Big Data
+>    (workshop held at MICCAI 2014)
+
+> <http://vantulder.net/publications/2014/vantulder-2014-miccai-mcv.pdf> <br>
+> <http://dx.doi.org/10.1007/978-3-319-13972-2_5>
+
+Gijs van Tulder <br>
+Biomedical Imaging Group Rotterdam <br>
+Erasmus MC, Rotterdam, the Netherlands <br>
+
+
+============================================
+
+
+
 Morb: a modular RBM implementation in Theano
 ============================================
 
