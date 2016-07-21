@@ -37,21 +37,22 @@ n_hidden = 100
 print ">> Constructing RBM..."
 rbm = rbms.BinaryBinaryCRBM(n_visible, n_hidden, n_context)
 initial_vmap = { rbm.v: T.matrix('v'), rbm.x: T.matrix('x') }
+pmap = rbm.pmap
 
 # try to calculate weight updates using CD-1 stats
 print ">> Constructing contrastive divergence updaters..."
-s = stats.cd_stats(rbm, initial_vmap, visible_units=[rbm.v], hidden_units=[rbm.h], context_units=[rbm.x], k=1)
+s = stats.cd_stats(rbm, initial_vmap, pmap, visible_units=[rbm.v], hidden_units=[rbm.h], context_units=[rbm.x], k=1)
 
 umap = {}
 for var in rbm.variables:
-    pu = var + 0.0005 * updaters.CDUpdater(rbm, var, s)
-    umap[var] = pu
+    pu = pmap[var] + 0.0005 * updaters.CDUpdater(rbm, var, s)
+    umap[pmap[var]] = pu
 
 print ">> Compiling functions..."
 t = trainers.MinibatchTrainer(rbm, umap)
 m = monitors.reconstruction_mse(s, rbm.v)
 mce = monitors.reconstruction_crossentropy(s, rbm.v)
-free_energy = T.mean(rbm.free_energy([rbm.h], s['data'])) # take the mean over the minibatch.
+free_energy = T.mean(rbm.free_energy([rbm.h], s['data'], pmap)) # take the mean over the minibatch.
 
 # train = t.compile_function(initial_vmap, mb_size=32, monitors=[m], name='train', mode=mode)
 train = t.compile_function(initial_vmap, mb_size=32, monitors=[m, mce, free_energy], name='train', mode=mode)

@@ -4,6 +4,9 @@ This is a modified version of Morb. This version provides
  * persistent contrastive divergence (PCD) with fast weights;
  * a number of small changes and fixes.
 
+Note that the examples were written for the original version of Morb
+and may not directly work with this modified version.
+
 This is part of the code used for the convolutional classification RBMs in
 
 > Learning Features for Tissue Classification with the Classification

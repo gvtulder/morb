@@ -19,9 +19,14 @@ class BinaryBinaryRBM(RBM): # the basic RBM, with binary visibles and binary hid
         self.v = units.BinaryUnits(self, name='v') # visibles
         self.h = units.BinaryUnits(self, name='h') # hiddens
         # parameters
-        self.W = parameters.ProdParameters(self, [self.v, self.h], theano.shared(value = self._initial_W(), name='W'), name='W') # weights
-        self.bv = parameters.BiasParameters(self, self.v, theano.shared(value = self._initial_bv(), name='bv'), name='bv') # visible bias
-        self.bh = parameters.BiasParameters(self, self.h, theano.shared(value = self._initial_bh(), name='bh'), name='bh') # hidden bias
+        self.pmap = {
+            'W': theano.shared(value = self._initial_W(), name='W'),
+            'bv': theano.shared(value = self._initial_bv(), name='bv'),
+            'bh': theano.shared(value = self._initial_bh(), name='bh')
+          }
+        self.W = parameters.ProdParameters(self, [self.v, self.h], 'W', name='W') # weights
+        self.bv = parameters.BiasParameters(self, self.v, 'bv', name='bv') # visible bias
+        self.bh = parameters.BiasParameters(self, self.h, 'bh', name='bh') # hidden bias
         
     def _initial_W(self):
         return np.asarray( np.random.uniform(
@@ -46,8 +51,10 @@ class BinaryBinaryCRBM(BinaryBinaryRBM):
         # units
         self.x = units.Units(self, name='x') # context
         # parameters
-        self.A = parameters.ProdParameters(self, [self.x, self.v], theano.shared(value = self._initial_A(), name='A'), name='A') # context-to-visible weights
-        self.B = parameters.ProdParameters(self, [self.x, self.h], theano.shared(value = self._initial_B(), name='B'), name='B') # context-to-hidden weights
+        self.pmap['A'] = theano.shared(value = self._initial_A(), name='A')
+        self.pmap['B'] = theano.shared(value = self._initial_B(), name='B')
+        self.A = parameters.ProdParameters(self, [self.x, self.v], 'A', name='A') # context-to-visible weights
+        self.B = parameters.ProdParameters(self, [self.x, self.h], 'B', name='B') # context-to-hidden weights
 
     def _initial_A(self):
         return np.zeros((self.n_context, self.n_visible), dtype = theano.config.floatX)

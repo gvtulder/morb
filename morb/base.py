@@ -44,7 +44,7 @@ class Units(object):
         return self.mean_field_from_activation({ self: self.activation(vmap, pmap) })
         
     def free_energy_term(self, vmap, pmap):
-        return self.free_energy_term_from_activation({ self: self.activation(vmap, pmap) })
+        return self.free_energy_term_from_activation({ self: self.activation(vmap, pmap) }, pmap)
         
     def log_prob(self, vmap, pmap):
         activation_vmap = { self: self.activation(vmap, pmap) }
